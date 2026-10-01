@@ -55,7 +55,7 @@ function Identity() {
     <section aria-label={copy.identity} className="mt-[0.15em]">
       <div className="flex items-end gap-[0.4em]">
         <span className="shrink-0 font-bold">{copy.name}</span>
-        <Line name="name" />
+        <Line name="name" testId="patient-name-input" />
         <span className="shrink-0 font-bold">{copy.last4}</span>
         <Line name="last4" grow={false} className="w-[4.2em]" maxLength={4} inputMode="numeric" />
       </div>

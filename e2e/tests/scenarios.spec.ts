@@ -270,7 +270,7 @@ test("T-07 the later evac priority wins and a conflict is stored", async ({ twoD
     if (!appeared) continue;
     await expect(device.getByText("PRIORITY", { exact: true })).toBeVisible();
     await expect(device.getByText("URGENT", { exact: true })).toBeVisible();
-    await device.getByRole("button", { name: "Keep" }).click();
+    await device.getByRole("button", { name: "Keep", exact: true }).click();
     await expect(device.getByText("No conflicts to review.")).toBeVisible();
     reviewed = true;
     break;

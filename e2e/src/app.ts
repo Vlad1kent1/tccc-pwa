@@ -43,7 +43,7 @@ export async function boot(page: Page): Promise<void> {
 
 export async function createCasualty(page: Page, lastName: string): Promise<string> {
   await visit(page, "/casualties/new");
-  const lastNameField = page.getByRole("textbox", { name: "Last name" });
+  const lastNameField = page.getByTestId("patient-name-input");
   const opened = await lastNameField
     .waitFor({ state: "visible", timeout: 5_000 })
     .then(() => true)

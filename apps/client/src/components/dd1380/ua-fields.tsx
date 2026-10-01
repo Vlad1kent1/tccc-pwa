@@ -50,12 +50,14 @@ export function Line({
   grow = true,
   maxLength,
   inputMode,
+  testId,
 }: {
   name: string;
   className?: string;
   grow?: boolean;
   maxLength?: number;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
+  testId?: string;
 }) {
   const id = useFieldId(name);
   const [value, setValue] = useTextValue(name);
@@ -66,6 +68,7 @@ export function Line({
       size={1}
       autoComplete="off"
       spellCheck={false}
+      data-testid={testId}
       maxLength={maxLength}
       inputMode={inputMode}
       value={value}
