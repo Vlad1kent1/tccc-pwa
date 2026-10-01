@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import type { ZodType } from "zod";
 import { useT } from "@/i18n/use-t";
@@ -20,15 +20,28 @@ function parseStep(value: string | null): Step {
 }
 
 export function CardWizard() {
-  const params = useSearchParams();
   const router = useRouter();
   const { t } = useT();
-  const id = params.get("id");
-  const step = parseStep(params.get("step"));
+  // Defaults match the server render. Reading the query here would bail the
+  // page out to client-side rendering, and the offline shell would have no fields.
+  const [id, setId] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>("A");
+  const [ready, setReady] = useState(false);
   const idRef = useRef(id);
   const stepRef = useRef(step);
   idRef.current = id;
   stepRef.current = step;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nextId = params.get("id");
+    const nextStep = parseStep(params.get("step"));
+    idRef.current = nextId;
+    stepRef.current = nextStep;
+    setId(nextId);
+    setStep(nextStep);
+    setReady(true);
+  }, []);
   const savers = useRef(new Map<string, StepSaver>());
   const [held, setHeld] = useState<LocalCasualtyCard | null>(null);
 
@@ -64,6 +77,7 @@ export function CardWizard() {
       }
       const created = await pendingCreate;
       idRef.current = created.id;
+      setId(created.id);
       const next = !first && Object.keys(patch).length > 0 ? await casualtyRepo.updateFields(created.id, patch) : created;
       setHeld(next);
       router.replace(`/casualties/new?id=${encodeURIComponent(created.id)}&step=${stepRef.current}`);
@@ -89,6 +103,8 @@ export function CardWizard() {
       if (cardId) router.push(`/casualties/card?id=${encodeURIComponent(cardId)}`);
       return;
     }
+    stepRef.current = next;
+    setStep(next);
     const query = cardId ? `id=${encodeURIComponent(cardId)}&step=${next}` : `step=${next}`;
     router.replace(`/casualties/new?${query}`);
   }
@@ -129,7 +145,7 @@ export function CardWizard() {
         ))}
       </nav>
       <p className="text-sm text-muted">{t("wizard.localSave")}</p>
-      {step === "A" ? <SectionA card={card} ensure={ensure} register={register} /> : null}
+      {step === "A" ? <SectionA card={card} ensure={ensure} register={register} nameReady={ready} /> : null}
       {step === "B" && card ? <SectionB card={card} ensure={ensure} register={register} /> : null}
       {step === "C" && card ? <SectionC card={card} register={register} /> : null}
       {step === "E" && card ? <SectionE card={card} ensure={ensure} register={register} /> : null}

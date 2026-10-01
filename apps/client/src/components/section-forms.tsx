@@ -80,10 +80,12 @@ export function SectionA({
   card,
   ensure,
   register,
+  nameReady = true,
 }: {
   card: LocalCasualtyCard | null;
   ensure: SectionEnsure;
   register: RegisterSaver;
+  nameReady?: boolean;
 }) {
   const { t } = useT();
   const defaults = {
@@ -99,7 +101,13 @@ export function SectionA({
     <SectionFields name="A" schema={sectionASchema} defaults={defaults} ensure={ensure} register={register}>
       {(form) => (
         <>
-          <TextField form={form} name="lastName" label={t("wizard.fields.lastName")} />
+          <TextField
+            form={form}
+            name="lastName"
+            label={t("wizard.fields.lastName")}
+            testId="patient-name-input"
+            disabled={!nameReady}
+          />
           <TextField form={form} name="firstName" label={t("wizard.fields.firstName")} />
           <Controller
             name="gender"
@@ -308,12 +316,16 @@ function TextField({
   name,
   label,
   multiline = false,
+  testId,
+  disabled = false,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   form: UseFormReturn<any>;
   name: string;
   label: string;
   multiline?: boolean;
+  testId?: string;
+  disabled?: boolean;
 }) {
   return (
     <Controller
@@ -324,12 +336,16 @@ function TextField({
           {multiline ? (
             <textarea
               className={`${fieldClass} min-h-28 py-2`}
+              data-testid={testId}
+              disabled={disabled}
               value={field.value ?? ""}
               onChange={(event) => field.onChange(event.target.value || null)}
             />
           ) : (
             <input
               className={fieldClass}
+              data-testid={testId}
+              disabled={disabled}
               value={field.value ?? ""}
               onChange={(event) => field.onChange(event.target.value || null)}
             />
