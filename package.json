@@ -1,0 +1,12 @@
+{
+  "name": "tccc-pwa",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter client --filter server dev",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "pnpm --filter server exec prisma migrate dev",
+    "db:seed": "pnpm --filter server exec prisma db seed",
+    "test": "pnpm --filter client --filter server --filter @tccc/shared test",
+    "test:e2e": "pnpm --filter e2e test"
+  }
+}

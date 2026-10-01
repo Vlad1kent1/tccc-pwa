@@ -6,16 +6,25 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "@serwist/next": "^9.5.12",
+    "@hookform/resolvers": "^5.9.1",
+    "@serwist/turbopack": "^9.5.12",
+    "@tanstack/react-virtual": "^3.14.13",
+    "@tccc/shared": "workspace:*",
     "dexie": "^4.4.6",
+    "dexie-react-hooks": "^4.4.0",
+    "esbuild": "^0.28.2",
     "next": "16.3.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-hook-form": "^7.88.0",
-    "serwist": "^9.5.12"
+    "serwist": "^9.5.12",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
@@ -24,8 +33,10 @@
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "16.3.6",
+    "fake-indexeddb": "^6.2.5",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   },
   "packageManager": "pnpm@11.18.0"
 }
