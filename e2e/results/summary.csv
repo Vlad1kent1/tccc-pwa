@@ -1,0 +1,41 @@
+scenario,browser,status,duration_ms
+"chaos latency still delivers one card",chromium,passed,6788
+"chaos latency still delivers one card",webkit,skipped,66
+"NFR-03 vitals input time",chromium,skipped,8
+"NFR-03 vitals input time",webkit,skipped,5
+"T-01 offline create survives reload and syncs once",chromium,passed,26102
+"T-01 offline create survives reload and syncs once",webkit,skipped,124
+"T-02 ten offline edits coalesce to the final value",chromium,passed,21711
+"T-02 ten offline edits coalesce to the final value",webkit,skipped,76
+"T-03 a dropped in-flight push is retried once",chromium,passed,13027
+"T-03 a dropped in-flight push is retried once",webkit,skipped,55
+"T-04 dropped responses still apply each mutation once",chromium,passed,15534
+"T-04 dropped responses still apply each mutation once",webkit,passed,20683
+"T-05 failures are retried and the card still syncs",chromium,passed,7445
+"T-05 failures are retried and the card still syncs",webkit,skipped,23
+"T-06 two devices keep edits to different fields",chromium,passed,27965
+"T-06 two devices keep edits to different fields",webkit,skipped,21
+"T-07 the later evac priority wins and a conflict is stored",chromium,passed,36243
+"T-07 the later evac priority wins and a conflict is stored",webkit,skipped,17
+"T-08 a later vitals edit beats an earlier delete",chromium,passed,27094
+"T-08 a later vitals edit beats an earlier delete",webkit,skipped,26
+"T-09 200 cards across a 72 hour offline period",chromium,skipped,37
+"T-09 200 cards across a 72 hour offline period",webkit,skipped,18
+"T-10 a card syncs on Fast 3G",chromium,passed,6388
+"T-10 a card syncs on Fast 3G",webkit,skipped,39
+"T-10 a card syncs on Field 2G",chromium,passed,9521
+"T-10 a card syncs on Field 2G",webkit,skipped,74
+"T-10 a card syncs on Slow 3G",chromium,passed,11763
+"T-10 a card syncs on Slow 3G",webkit,skipped,91
+"T-10 Slow 3G and Field 2G timing for 50 cards",chromium,skipped,10
+"T-10 Slow 3G and Field 2G timing for 50 cards",webkit,skipped,2
+"T-11 service worker update while offline",chromium,skipped,2
+"T-11 service worker update while offline",webkit,skipped,4
+"T-12 offline cold start renders the shell",chromium,passed,10938
+"T-12 offline cold start renders the shell",webkit,skipped,45
+"T-13 storage pressure",chromium,skipped,3
+"T-13 storage pressure",webkit,skipped,4
+"T-14 a clock one hour ahead still orders by HLC",chromium,passed,42794
+"T-14 a clock one hour ahead still orders by HLC",webkit,skipped,30
+"T-15 an invalid vitals payload is rejected without blocking a valid edit",chromium,passed,8943
+"T-15 an invalid vitals payload is rejected without blocking a valid edit",webkit,passed,41012
