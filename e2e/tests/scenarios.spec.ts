@@ -347,37 +347,29 @@ test("T-14 a clock one hour ahead still orders by HLC", async ({ twoDevices, ser
   test.setTimeout(180_000);
   const { a, b } = await twoDevices();
   const name = tag("T14");
-  await b.addInitScript(() => {
-    const shift = 60 * 60 * 1000;
-    const realNow = Date.now;
-    const RealDate = Date;
-    class ShiftedDate extends RealDate {
-      // ConstructorParameters keeps only the last Date overload, whose length is 1.
-      // The empty tuple is the real `new Date()` path this clock must shift.
-      constructor(...args: [] | ConstructorParameters<typeof RealDate>) {
-        if (args.length === 0) super(realNow() + shift);
-        else super(...args);
-      }
-      static now(): number {
-        return realNow() + shift;
-      }
-    }
-    window.Date = ShiftedDate as DateConstructor;
-  });
   await boot(a);
   await boot(b);
   const id = await createCasualty(a, name);
   await expect.poll(async () => (await serverCounts(name)).cards.length, { timeout: 20_000 }).toBe(1);
   await waitForListed(b, name);
-  await b.goto(`/casualties/card/edit?id=${encodeURIComponent(id)}&section=A`);
-  await expect(b.getByRole("textbox", { name: "Last name" })).toBeVisible();
+  // Install before the edit page loads so its timers and Date.now share this clock.
+  await b.clock.install();
   await b.context().setOffline(true);
+  await b.goto(`/casualties/card/edit?id=${encodeURIComponent(id)}&section=A`);
+  await expect(b.getByTestId("patient-name-input")).toBeVisible();
+  await b.clock.setFixedTime(Date.now() + 60 * 60 * 1000);
+  // editField advances the fixed clock only long enough for the debounce, and
+  // does not return until IndexedDB has the new name.
   await editField(b, id, "A", "Last name", `${name}-future`);
+  await b.clock.setFixedTime(Date.now());
   await reconnect(b);
   await expect.poll(async () => (await cardNamed(await serverCounts(`${name}-future`), `${name}-future`)) != null, {
     timeout: 20_000,
   }).toBe(true);
+  // Stay on the pre-pull version so the server compares HLC instead of taking the fast path.
+  await a.context().setOffline(true);
   await editField(a, id, "A", "Last name", `${name}-past`);
+  await reconnect(a);
   await expect.poll(async () => (await serverCounts(`${name}-future`)).cards.length, { timeout: 20_000 }).toBe(1);
   expect((await serverCounts(`${name}-past`)).cards).toHaveLength(0);
 });

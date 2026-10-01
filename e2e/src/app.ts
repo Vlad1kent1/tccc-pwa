@@ -117,12 +117,30 @@ export async function waitForListed(page: Page, name: string): Promise<void> {
   await expect(page.getByText(name, { exact: true })).toBeVisible();
 }
 
+const EDIT_FIELDS = {
+  "Last name": "lastName",
+  Notes: "notes",
+  Allergies: "allergies",
+} as const satisfies Record<string, keyof LocalCard>;
+
 export async function editField(page: Page, id: string, section: string, label: string, value: string): Promise<void> {
   await visit(page, `/casualties/card/edit?id=${encodeURIComponent(id)}&section=${section}`);
-  const field = page.getByRole("textbox", { name: label });
+  const field = label === "Last name" ? page.getByTestId("patient-name-input") : page.getByRole("textbox", { name: label, exact: true });
+  await expect(field).toBeVisible();
   await field.fill(value);
+  // Section forms save on a 400ms debounce, not on each keystroke.
   await field.blur();
-  await page.waitForTimeout(700);
+  await page.keyboard.press("Tab");
+  // A fixed Playwright clock does not run timers until time is advanced.
+  // One second is enough for the debounce and keeps an hour-ahead clock ahead.
+  await page.clock.fastForward(1_000).catch(() => undefined);
+  const stored = EDIT_FIELDS[label as keyof typeof EDIT_FIELDS];
+  await expect
+    .poll(async () => {
+      const cards = await readLocalCards(page);
+      return cards.some((card) => card.id === id && card[stored] === value);
+    }, { timeout: 15_000 })
+    .toBe(true);
   await nudge(page);
 }
 
