@@ -39,6 +39,12 @@ export async function boot(page: Page): Promise<void> {
   await expect
     .poll(() => page.evaluate(() => navigator.serviceWorker?.controller != null), { timeout: 15_000 })
     .toBe(true);
+  // Visit the new-casualty shell while the network is up so the first offline
+  // create is served from cache instead of the offline fallback.
+  await page.goto("/casualties/new", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("patient-name-input")).toBeVisible();
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Casualties" })).toBeVisible();
 }
 
 export async function createCasualty(page: Page, lastName: string): Promise<string> {
@@ -144,10 +150,24 @@ export async function editField(page: Page, id: string, section: string, label: 
   await nudge(page);
 }
 
+const PRIORITY_VALUE = {
+  Urgent: "URGENT",
+  Priority: "PRIORITY",
+  Routine: "ROUTINE",
+} as const;
+
 export async function choosePriority(page: Page, id: string, label: "Urgent" | "Priority" | "Routine"): Promise<void> {
-  await visit(page, `/casualties/card/edit?id=${encodeURIComponent(id)}&section=A`);
-  await page.getByRole("button", { name: label, exact: true }).click();
-  await page.waitForTimeout(700);
+  await visit(page, `/casualties/card?id=${encodeURIComponent(id)}`);
+  const radio = page.getByRole("radio", { name: label, exact: true }).first();
+  await expect(radio).toBeVisible();
+  await radio.check();
+  await page.keyboard.press("Tab");
+  await page.clock.fastForward(1_000).catch(() => undefined);
+  await expect
+    .poll(async () => (await readLocalCards(page)).some((card) => card.id === id && card.evacPriority === PRIORITY_VALUE[label]), {
+      timeout: 15_000,
+    })
+    .toBe(true);
   await nudge(page);
 }
 
