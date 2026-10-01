@@ -1,0 +1,11 @@
+scenario,browser,profile,data_loss,duplicates,sync_ms,payload_bytes,retries,first_render_ms,indexeddb_bytes_per_card
+"chaos latency still delivers one card",chromium,chaos-latency,0,0,3583,,,,
+"T-01 offline create survives reload and syncs once",chromium,,0,0,,,,,77848
+"T-02 ten offline edits coalesce to the final value",chromium,,,,,319,,,
+"T-04 dropped responses still apply each mutation once",chromium,,0,0,,,,,
+"T-04 dropped responses still apply each mutation once",webkit,,0,0,,,,,
+"T-05 failures are retried and the card still syncs",chromium,,0,0,,,2,,
+"T-10 a card syncs on Fast 3G",chromium,Fast 3G,0,0,584,,,,
+"T-10 a card syncs on Field 2G",chromium,Field 2G,0,0,1273,,,,
+"T-10 a card syncs on Slow 3G",chromium,Slow 3G,0,0,1646,,,,
+"T-12 offline cold start renders the shell",chromium,,,,,,,914,
