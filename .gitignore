@@ -13,11 +13,13 @@ dist/
 build/
 out/
 .next/
+.next-e2e/
 .vercel/
 
 # Environment Variables
 .env
 .env.*
+!.env.example
 
 # TypeScript & Next.js
 *.tsbuildinfo
@@ -28,6 +30,7 @@ coverage/
 .nyc_output/
 
 # Database
+apps/server/src/generated/
 apps/server/prisma/*.db
 apps/server/prisma/*.db-journal
 

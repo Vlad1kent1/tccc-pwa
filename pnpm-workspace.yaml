@@ -1,8 +1,15 @@
 packages:
   - 'apps/*'
+  - 'packages/*'
+  - 'e2e'
 allowBuilds:
+  '@prisma/engines': true
+  '@scarf/scarf': false
+  '@swc/core': true
   esbuild: true
   msgpackr-extract: true
+  prisma: true
+  sharp: false
   unrs-resolver: false
   workerd: true
 minimumReleaseAgeExclude:
