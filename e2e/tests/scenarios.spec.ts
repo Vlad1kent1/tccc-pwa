@@ -232,11 +232,11 @@ test("T-07 the later evac priority wins and a conflict is stored", async ({ twoD
   await choosePriority(a, id, "Routine");
   await expect.poll(async () => (await cardNamed(await serverCounts(name), name))?.evacPriority, { timeout: 20_000 }).toBe("ROUTINE");
   await waitForListed(b, name);
-  const identity = `/casualties/card/edit?id=${encodeURIComponent(id)}&section=A`;
-  await a.goto(identity);
-  await b.goto(identity);
-  await expect(a.getByRole("button", { name: "Urgent", exact: true })).toBeVisible();
-  await expect(b.getByRole("button", { name: "Priority", exact: true })).toBeVisible();
+  const cardUrl = `/casualties/card?id=${encodeURIComponent(id)}`;
+  await a.goto(cardUrl);
+  await b.goto(cardUrl);
+  await expect(a.getByRole("radio", { name: "Urgent", exact: true }).first()).toBeVisible();
+  await expect(b.getByRole("radio", { name: "Priority", exact: true }).first()).toBeVisible();
   await a.context().setOffline(true);
   await b.context().setOffline(true);
   await choosePriority(a, id, "Urgent");
@@ -249,8 +249,7 @@ test("T-07 the later evac priority wins and a conflict is stored", async ({ twoD
   const card = counts.cards[0]!;
   expect(counts.conflicts.some((conflict) => conflict.cardId === card.id && conflict.field === "evacPriority")).toBe(true);
   for (const device of [a, b]) {
-    await device.goto("/", { waitUntil: "domcontentloaded" });
-    await device.getByRole("searchbox", { name: "Search casualties" }).fill(name);
+    await waitForListed(device, name);
   }
   await expect
     .poll(
