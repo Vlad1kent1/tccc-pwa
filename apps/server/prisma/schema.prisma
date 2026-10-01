@@ -1,0 +1,296 @@
+// Data model for the TCCC Casualty Card (DD Form 1380).
+// Field IDs (A-01, C-09, ...) refer to docs/requirements.md, Section 5.
+// Enums are mirrored in packages/shared/src/enums.ts.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Enums (mirror DD Form 1380 checkboxes) ----------
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum EvacPriority {
+  URGENT
+  PRIORITY
+  ROUTINE
+}
+
+enum MechanismOfInjury {
+  ARTILLERY
+  BLUNT
+  BURN
+  FALL
+  GRENADE
+  GSW
+  IED
+  LANDMINE
+  MVC
+  RPG
+  OTHER
+}
+
+enum Limb {
+  RIGHT_ARM
+  LEFT_ARM
+  RIGHT_LEG
+  LEFT_LEG
+}
+
+enum BodyRegion {
+  HEAD
+  FACE
+  NECK
+  CHEST
+  ABDOMEN
+  PELVIS
+  UPPER_BACK
+  LOWER_BACK
+  RIGHT_ARM
+  LEFT_ARM
+  RIGHT_LEG
+  LEFT_LEG
+}
+
+enum BodyView {
+  FRONT
+  BACK
+}
+
+enum Avpu {
+  ALERT
+  VERBAL
+  PAIN
+  UNRESPONSIVE
+}
+
+enum CirculationTreatment {
+  TOURNIQUET
+  DRESSING
+  HEMOSTATIC
+  PRESSURE
+}
+
+enum AirwayTreatment {
+  INTACT
+  NPA
+  CRIC
+  ET_TUBE
+  SGA
+}
+
+enum BreathingTreatment {
+  O2
+  NEEDLE_D
+  CHEST_TUBE
+  CHEST_SEAL
+}
+
+enum OtherTreatment {
+  EYE_SHIELD
+  SPLINT
+  HYPOTHERMIA_PREVENTION
+}
+
+enum FluidKind {
+  FLUID
+  BLOOD_PRODUCT
+}
+
+enum MedicationCategory {
+  ANALGESIC
+  ANTIBIOTIC
+  OTHER
+}
+
+enum Route {
+  IV
+  IO
+  IM
+  IN
+  PO
+  SC
+  PR
+  TOPICAL
+  OTHER
+}
+
+// ---------- Aggregate root ----------
+
+model CasualtyCard {
+  id                 String                 @id @db.Uuid
+
+  // Section A - Casualty details
+  lastName           String?
+  firstName          String?
+  gender             Gender?
+  injuredAt          DateTime?              @db.Timestamptz(3) // card "Date" + "Time"
+  battleRosterNumber String?
+  evacPriority       EvacPriority?
+  allergies          String?
+
+  // Section B - Details of injury
+  mechanisms         MechanismOfInjury[]
+  mechanismOther     String?
+  injurySites        InjurySite[]
+  tourniquets        Tourniquet[]
+
+  // Section C - Signs & symptoms
+  vitalSigns         VitalSigns[]
+
+  // Section E - Treatments
+  circulation        CirculationTreatment[]
+  airway             AirwayTreatment[]
+  breathing          BreathingTreatment[]
+  otherTreatments    OtherTreatment[]
+  fluids             FluidAdministration[]
+
+  // Section F - Medications
+  medications        Medication[]
+
+  // Section G - Notes
+  notes              String?
+
+  // Section H - Responder details
+  responderName      String?
+  responderLast4     String?                @db.Char(4)
+
+  // Sync metadata
+  fieldClock         Json                   @default("{}") // { fieldName: HLC }
+  version            Int                    @default(1)
+  changeSeq          BigInt                 @unique // set from nextval('card_change_seq')
+  createdByDeviceId  String                 @db.Uuid
+  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
+  serverUpdatedAt    DateTime               @updatedAt @db.Timestamptz(3)
+  deletedAt          DateTime?              @db.Timestamptz(3)
+
+  conflicts          SyncConflict[]
+
+  @@index([evacPriority])
+  @@index([battleRosterNumber])
+  @@index([lastName, firstName])
+}
+
+// ---------- Child rows ----------
+
+model InjurySite {
+  id              String       @id @db.Uuid
+  cardId          String       @db.Uuid
+  card            CasualtyCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  region          BodyRegion
+  view            BodyView
+  x               Float? // 0..1 relative position on the body diagram
+  y               Float?
+  description     String?
+  clientUpdatedAt String // HLC
+  deletedAt       DateTime?    @db.Timestamptz(3)
+
+  @@index([cardId])
+}
+
+model Tourniquet {
+  id              String       @id @db.Uuid // uuidv5(cardId + ":" + limb)
+  cardId          String       @db.Uuid
+  card            CasualtyCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  limb            Limb
+  type            String // e.g. "CAT", "SOFTT-W"
+  appliedAt       DateTime     @db.Timestamptz(3)
+  clientUpdatedAt String
+  deletedAt       DateTime?    @db.Timestamptz(3)
+
+  @@unique([cardId, limb])
+}
+
+model VitalSigns {
+  id              String       @id @db.Uuid
+  cardId          String       @db.Uuid
+  card            CasualtyCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  measuredAt      DateTime     @db.Timestamptz(3)
+  pulseRate       Int?
+  pulseLocation   String? // e.g. "radial", "carotid"
+  systolic        Int?
+  diastolic       Int?
+  respiratoryRate Int?
+  spo2            Int? // Pulse Ox % O2 Sat, 0..100
+  avpu            Avpu?
+  painScale       Int? // 0..10
+  clientUpdatedAt String
+  deletedAt       DateTime?    @db.Timestamptz(3)
+
+  @@index([cardId, measuredAt])
+}
+
+model FluidAdministration {
+  id              String       @id @db.Uuid
+  cardId          String       @db.Uuid
+  card            CasualtyCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  kind            FluidKind
+  name            String // e.g. "Whole blood", "Plasma"
+  volumeMl        Int
+  route           Route
+  administeredAt  DateTime     @db.Timestamptz(3)
+  clientUpdatedAt String
+  deletedAt       DateTime?    @db.Timestamptz(3)
+
+  @@index([cardId])
+}
+
+model Medication {
+  id              String             @id @db.Uuid
+  cardId          String             @db.Uuid
+  card            CasualtyCard       @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  category        MedicationCategory
+  name            String // e.g. "Ketamine", "Moxifloxacin"
+  dose            String // free text with units, e.g. "50 mg"
+  route           Route
+  administeredAt  DateTime           @db.Timestamptz(3)
+  clientUpdatedAt String
+  deletedAt       DateTime?          @db.Timestamptz(3)
+
+  @@index([cardId])
+}
+
+// ---------- Sync infrastructure ----------
+
+model Device {
+  id         String   @id @db.Uuid
+  label      String?
+  lastSeenAt DateTime @db.Timestamptz(3)
+}
+
+model ProcessedMutation {
+  mutationId  String   @id @db.Uuid
+  deviceId    String   @db.Uuid
+  processedAt DateTime @default(now()) @db.Timestamptz(3)
+  result      Json
+
+  @@index([deviceId])
+}
+
+model SyncConflict {
+  id                String       @id @db.Uuid
+  cardId            String       @db.Uuid
+  card              CasualtyCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  entity            String // "card" | "tourniquet" | "vitalSigns" | ...
+  entityId          String       @db.Uuid
+  field             String
+  keptValue         Json
+  discardedValue    Json
+  discardedDeviceId String       @db.Uuid
+  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+  resolvedAt        DateTime?    @db.Timestamptz(3)
+  resolvedBy        String?
+
+  @@index([cardId])
+  @@index([resolvedAt])
+}
