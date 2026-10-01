@@ -29,6 +29,7 @@ export function CardWizard() {
   const [ready, setReady] = useState(false);
   const idRef = useRef(id);
   const stepRef = useRef(step);
+  const announcedId = useRef<string | null>(null);
   idRef.current = id;
   stepRef.current = step;
 
@@ -77,12 +78,19 @@ export function CardWizard() {
       }
       const created = await pendingCreate;
       idRef.current = created.id;
-      setId(created.id);
       const next = !first && Object.keys(patch).length > 0 ? await casualtyRepo.updateFields(created.id, patch) : created;
       setHeld(next);
-      router.replace(`/casualties/new?id=${encodeURIComponent(created.id)}&step=${stepRef.current}`);
+      setId(created.id);
+      // A router navigation fetches the RSC payload. Offline, the service worker
+      // aborts that request and Playwright reports net::ERR_ABORTED. The id only
+      // needs to be in the address bar, so update history without a page load.
+      if (announcedId.current !== created.id) {
+        announcedId.current = created.id;
+        const url = `/casualties/new?id=${encodeURIComponent(created.id)}&step=${stepRef.current}`;
+        window.history.replaceState(window.history.state, "", url);
+      }
     },
-    [router],
+    [],
   );
 
   const register = useCallback<RegisterSaver>((name, saver) => {

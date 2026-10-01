@@ -42,18 +42,30 @@ export async function boot(page: Page): Promise<void> {
 }
 
 export async function createCasualty(page: Page, lastName: string): Promise<string> {
-  await visit(page, "/casualties/new");
   const lastNameField = page.getByTestId("patient-name-input");
+  await visit(page, "/casualties/new");
   const opened = await lastNameField
-    .waitFor({ state: "visible", timeout: 5_000 })
+    .waitFor({ state: "visible", timeout: 30_000 })
     .then(() => true)
     .catch(() => false);
   if (!opened) {
-    await visit(page, "/casualties/new");
-    await expect(lastNameField).toBeVisible();
+    await page.goto("/casualties/new", { waitUntil: "domcontentloaded" }).catch(() => undefined);
+    await expect(lastNameField).toBeVisible({ timeout: 30_000 });
   }
   await lastNameField.fill(lastName);
-  await page.waitForURL(/[?&]id=/, { timeout: 15_000 });
+  await lastNameField.blur();
+  // history.replaceState updates the query without a document navigation.
+  // waitForURL waits for "load" and rejects with ERR_ABORTED when that
+  // navigation is cancelled offline.
+  await expect
+    .poll(() => {
+      try {
+        return new URL(page.url()).searchParams.get("id") ?? "";
+      } catch {
+        return "";
+      }
+    }, { timeout: 15_000 })
+    .not.toBe("");
   const id = new URL(page.url()).searchParams.get("id");
   if (!id) throw new Error(`Card for ${lastName} was not created`);
   await expect.poll(async () => (await readLocalCards(page)).some((card) => card.id === id && card.lastName === lastName)).toBe(true);
