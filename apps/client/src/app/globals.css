@@ -1,26 +1,625 @@
 @import "tailwindcss";
 
+/* First tap must activate the control. Sticky :hover is what makes iOS wait for a second tap. */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0c1210;
+  --foreground: #e7efe9;
+  --muted: #b7c4bb;
+  --surface: #16201c;
+  --border: #3d5248;
+  --accent: #9dce78;
+  --on-accent: #10210a;
+  --danger: #ffb4aa;
+  --danger-strong: #ff6b6b;
+  --warning: #f5d78e;
+  --warning-surface: #2a2412;
+  --warning-border: #8a6a22;
+  --urgent: #ff6b6b;
+  --on-urgent: #1a0505;
+  --priority: #f5d78e;
+  --on-priority: #1a1200;
+  --routine: #9dce78;
+  --on-routine: #10210a;
+  color-scheme: dark;
+}
+
+html.contrast {
+  --background: #000000;
+  --foreground: #ffffff;
+  --muted: #ffffff;
+  --surface: #000000;
+  --border: #ffffff;
+  --accent: #ffe14a;
+  --on-accent: #000000;
+  --danger: #ff5c5c;
+  --danger-strong: #ff5c5c;
+  --warning: #ffe14a;
+  --warning-surface: #000000;
+  --warning-border: #ffe14a;
+  --urgent: #ff5c5c;
+  --on-urgent: #000000;
+  --priority: #ffe14a;
+  --on-priority: #000000;
+  --routine: #ffffff;
+  --on-routine: #000000;
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --color-danger-strong: var(--danger-strong);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-urgent: var(--urgent);
+  --color-on-urgent: var(--on-urgent);
+  --color-priority: var(--priority);
+  --color-on-priority: var(--on-priority);
+  --color-routine: var(--routine);
+  --color-on-routine: var(--on-routine);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+a,
+button,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+input,
+textarea,
+select {
+  touch-action: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .btn {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    min-height: 3rem;
+    min-width: 3rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .btn-primary:active {
+    filter: brightness(0.92);
+  }
+
+  .btn-secondary {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--foreground);
+    font-weight: 500;
+  }
+
+  .btn-secondary:active {
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  }
+
+  .btn-danger {
+    border: 1px solid var(--danger-strong);
+    background: transparent;
+    color: var(--danger);
+    font-weight: 500;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--foreground);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .btn-icon {
+    width: 3rem;
+    padding: 0;
+  }
+
+  .chip {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    min-height: 3rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--foreground);
+  }
+
+  .chip-on,
+  .chip[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .input {
+    position: relative;
+    z-index: 1;
+    min-height: 3rem;
+    width: 100%;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 0.5rem 0.75rem;
+    font-size: 1rem;
+    color: var(--foreground);
+  }
+
+  .surface {
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 1rem;
+  }
+
+  .row {
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .priority-urgent {
+    border-left: 6px solid var(--urgent);
+  }
+
+  .priority-priority {
+    border-left: 6px solid var(--priority);
+  }
+
+  .priority-routine {
+    border-left: 6px solid var(--routine);
+  }
+
+  .priority-unset {
+    border-left: 6px solid var(--border);
+  }
+
+  .error-text {
+    color: var(--danger);
+    font-size: 0.875rem;
+  }
+
+  .banner-warning {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--warning-border);
+    background: var(--warning-surface);
+    color: var(--warning);
+    padding: 0.75rem 1rem;
+  }
+
+  .fab {
+    position: fixed;
+    z-index: 30;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    width: 3.5rem;
+    height: 3.5rem;
+    min-width: 3.5rem;
+    min-height: 3.5rem;
+    padding: 0;
+    border-radius: 999px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  }
+}
+
+.dd1380-root {
+  color-scheme: light;
+}
+
+.dd-sheet {
+  container-type: inline-size;
+  font-family: Arial, var(--font-dd-sans), Helvetica, sans-serif;
+  color: #000;
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.dd-sheet :focus-visible {
+  outline: 1px solid #000;
+  outline-offset: 0;
+}
+
+.ua-box {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  position: relative;
+  width: 0.95em;
+  height: 0.95em;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #000;
+  border-radius: 0;
+  background: #fff;
+  color-scheme: light;
+  cursor: pointer;
+  vertical-align: -0.12em;
+}
+
+.ua-specify {
+  width: 7em;
+  margin-left: 0.4em;
+  border-bottom-style: dashed;
+}
+
+.ua-box:checked::after {
+  content: "X";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.78em;
+  font-weight: 700;
+  line-height: 1;
+  color: #000;
+}
+
+.ua-select {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0 0.1em;
+  border: 0;
+  background: transparent;
+  color: #000;
+  color-scheme: light;
+  font: inherit;
+  font-weight: 400;
+  line-height: 1.05;
+  text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+}
+
+.ua-grid th,
+.ua-grid td {
+  height: 1.7em;
+  padding: 0;
+  font-weight: 700;
+  vertical-align: middle;
+  line-height: 1.05;
+}
+
+.dd-field,
+.dd-box,
+.dd-mark {
+  z-index: 2;
+  color-scheme: light;
+}
+
+.dd-field {
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  padding: 0 0.12em;
+  background: transparent;
+  color: #000;
+  font-family: "Times New Roman", var(--font-dd-serif), Times, serif;
+  font-size: calc(var(--pt) * 10);
+  line-height: 1.1;
+  overflow: hidden;
+}
+
+textarea.dd-field {
+  resize: none;
+  padding: 0.2em 0.3em;
+  line-height: 1.25;
+  overflow: auto;
+}
+
+select.dd-field {
+  padding: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+.dd-field:focus,
+.dd-field:focus-visible,
+.dd-box:focus-visible,
+.dd-mark:focus-visible {
+  outline: calc(var(--pt) * 0.75) solid #000;
+  outline-offset: calc(var(--pt) * 0.35);
+}
+
+.dd-box {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: calc(var(--pt) * 0.5) solid #000;
+  border-radius: 0;
+  background: #fff;
+  cursor: pointer;
+}
+
+.dd-box:checked::after {
+  content: "X";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Arial, var(--font-dd-sans), Helvetica, sans-serif;
+  font-size: 0.85em;
+  font-weight: 700;
+  line-height: 1;
+  color: #000;
+}
+
+.dd-mark {
+  appearance: none;
+  -webkit-appearance: none;
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.dd-mark:checked::after {
+  content: "X";
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  font-family: Arial, var(--font-dd-sans), Helvetica, sans-serif;
+  font-size: 1.15em;
+  font-weight: 800;
+  line-height: 1;
+  color: #000;
+}
+
+.dd-dash {
+  height: calc(var(--pt) * 0.5);
+  background-image: repeating-linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(var(--pt) * 2),
+    transparent calc(var(--pt) * 2),
+    transparent calc(var(--pt) * 3)
+  );
+}
+
+.dd1380 {
+  background: #f4f0e4;
+  color: #161616;
+  border: 2px solid #161616;
+  padding: 0.75rem;
+  font-family: Arial, Helvetica, sans-serif;
+  print-color-adjust: exact;
+}
+
+.dd1380-mast {
+  margin-bottom: 0.5rem;
+  border-bottom: 2px solid #161616;
+  padding-bottom: 0.4rem;
+  text-align: center;
+}
+
+.dd1380-mast h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dd1380-form-no {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+}
+
+.dd1380-box {
+  margin-top: -1px;
+  border: 1px solid #161616;
+  padding: 0.35rem 0.5rem;
+}
+
+.dd1380-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dd1380-roster,
+.dd1380-name {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.dd1380-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.dd1380-grid-2 .dd1380-box {
+  margin-top: 0;
+}
+
+.dd1380-check {
+  display: inline-flex;
+  height: 0.9rem;
+  width: 0.9rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid currentColor;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.dd1380-notes {
+  min-height: 4.5rem;
+}
+
+.dd1380 h2 {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dd1380 table th,
+.dd1380 table td {
+  border: 1px solid #161616;
+  padding: 0.2rem 0.35rem;
+  vertical-align: top;
+}
+
+.dd1380 svg rect {
+  fill: #fffef8 !important;
+  stroke: #161616 !important;
+}
+
+.dd1380 svg circle {
+  fill: #b42318 !important;
+  stroke: #161616 !important;
+}
+
+@media (max-width: 640px) {
+  .dd1380-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  .dd1380 {
+    max-width: none;
+    border: none;
+    background: white !important;
+  }
+
+  .dd1380-grid-2 {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .dd1380-back {
+    break-before: page;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  main {
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  .dd1380-root {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+    margin: 0 !important;
+    height: auto !important;
+  }
+
+  .dd-sheet,
+  .dd1380-root > * {
+    break-after: auto;
+    page-break-after: auto;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    flex: none !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .dd1380-root > :first-child {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  @page {
+    size: A4;
+    margin: 0.5cm;
+  }
 }
