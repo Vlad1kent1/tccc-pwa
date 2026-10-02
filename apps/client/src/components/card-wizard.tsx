@@ -34,14 +34,27 @@ export function CardWizard() {
   stepRef.current = step;
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const nextId = params.get("id");
-    const nextStep = parseStep(params.get("step"));
-    idRef.current = nextId;
-    stepRef.current = nextStep;
-    setId(nextId);
-    setStep(nextStep);
-    setReady(true);
+    const applyLocation = () => {
+      const nextId = new URLSearchParams(window.location.search).get("id");
+      const nextStep = parseStep(new URLSearchParams(window.location.search).get("step"));
+      // A fresh /casualties/new must not keep updating the card created on the previous visit.
+      if (!nextId) {
+        pendingCreate = null;
+        announcedId.current = null;
+      }
+      idRef.current = nextId;
+      stepRef.current = nextStep;
+      setId(nextId);
+      setStep(nextStep);
+      setReady(true);
+    };
+    applyLocation();
+    window.addEventListener("popstate", applyLocation);
+    window.addEventListener("pageshow", applyLocation);
+    return () => {
+      window.removeEventListener("popstate", applyLocation);
+      window.removeEventListener("pageshow", applyLocation);
+    };
   }, []);
   const savers = useRef(new Map<string, StepSaver>());
   const [held, setHeld] = useState<LocalCasualtyCard | null>(null);
@@ -63,8 +76,21 @@ export function CardWizard() {
   const ensure = useCallback(
     async (schema: ZodType, values: unknown) => {
       const patch = validPatch(schema, values);
-      if (idRef.current) {
-        if (Object.keys(patch).length > 0) setHeld(await casualtyRepo.updateFields(idRef.current, patch));
+      const urlId = new URLSearchParams(window.location.search).get("id");
+      const entered = Object.values(patch).some((value) => {
+        if (value == null || value === "") return false;
+        if (Array.isArray(value)) return value.length > 0;
+        return true;
+      });
+      if (!urlId && !entered) return;
+      if (!urlId && idRef.current) {
+        idRef.current = null;
+        pendingCreate = null;
+        announcedId.current = null;
+      }
+      if (urlId) {
+        idRef.current = urlId;
+        if (Object.keys(patch).length > 0) setHeld(await casualtyRepo.updateFields(urlId, patch));
         return;
       }
 

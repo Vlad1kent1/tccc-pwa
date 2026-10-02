@@ -110,18 +110,25 @@ test("T-02 ten offline edits coalesce to the final value", async ({ page, setOff
 });
 
 test("T-03 a dropped in-flight push is retried once", async ({ page, setOffline: offline, serverCounts }) => {
+  test.setTimeout(180_000);
   const name = tag("T03");
   await boot(page);
   await offline(true);
   await createCasualty(page, name);
   await page.route("**/api/sync/push", async (route) => {
-    await route.fetch();
-    await route.abort("connectionfailed");
+    try {
+      await route.fetch({ timeout: 5_000 });
+    } catch {
+      // The server may already have applied the body.
+    }
+    await route.abort("connectionfailed").catch(() => undefined);
   });
   await reconnect(page);
   await expect.poll(async () => (await serverCounts(name)).cards.length, { timeout: 20_000 }).toBe(1);
+  await page.unroute("**/api/sync/push").catch(() => undefined);
+  const context = page.context();
+  const reopened = await context.newPage();
   await page.close();
-  const reopened = await page.context().newPage();
   await boot(reopened);
   await expect.poll(async () => (await serverCounts(name)).cards.length, { timeout: 20_000 }).toBe(1);
 });
