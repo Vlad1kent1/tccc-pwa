@@ -2,7 +2,7 @@
 /// <reference lib="webworker" />
 import { defaultCache } from "@serwist/turbopack/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { NetworkFirst, NetworkOnly, Serwist, StaleWhileRevalidate } from "serwist";
+import { NetworkOnly, Serwist, StaleWhileRevalidate } from "serwist";
 import { pushOutboxFromWorker } from "../lib/sync/worker-push";
 
 declare global {
@@ -48,29 +48,46 @@ const serwist = new Serwist({
   },
 });
 
-const navigationStrategy = new NetworkFirst({
-  cacheName: "pages",
-  networkTimeoutSeconds: 3,
-  plugins: [
-    {
-      handlerDidError: async ({ request }) => {
-        const path = new URL(request.url).pathname;
-        return (
-          (await serwist.matchPrecache(path)) ??
-          (await serwist.matchPrecache("/~offline"))
-        );
-      },
-    },
-  ],
-});
+const PAGE_CACHE = "pages";
 
-// PrecacheRoute serves precached URLs cache-first. Navigations must be
-// NetworkFirst (3s) and only then fall back to the precached shell, then
-// /~offline, so this listener runs before Serwist's fetch handler.
+async function asDocument(response: Response): Promise<Response> {
+  if (!response.redirected) return response;
+  const headers = new Headers(response.headers);
+  headers.delete("location");
+  return new Response(await response.blob(), { status: 200, statusText: "OK", headers });
+}
+
+async function respondNavigation(request: Request): Promise<Response> {
+  const cache = await caches.open(PAGE_CACHE);
+  const path = new URL(request.url).pathname;
+  try {
+    const response = await Promise.race([
+      fetch(request),
+      new Promise<Response>((_, reject) => {
+        setTimeout(() => reject(new Error("navigation timeout")), 3000);
+      }),
+    ]);
+    if (response.ok) {
+      await cache.put(request, response.clone());
+      return response;
+    }
+  } catch {
+    // Offline, timed out, or aborted. Fall through to a stored document.
+  }
+  const cached =
+    (await cache.match(request, { ignoreVary: true })) ??
+    (await serwist.matchPrecache(path)) ??
+    (await serwist.matchPrecache("/~offline"));
+  if (cached) return asDocument(cached);
+  return Response.error();
+}
+
+// PrecacheRoute serves precached URLs cache-first. Navigations must try the
+// network, then the page cache (ignoring Vary), then the precached shell.
 self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate") return;
   event.stopImmediatePropagation();
-  event.respondWith(navigationStrategy.handle({ event, request: event.request }));
+  event.respondWith(respondNavigation(event.request));
 });
 
 self.addEventListener("message", (event) => {
