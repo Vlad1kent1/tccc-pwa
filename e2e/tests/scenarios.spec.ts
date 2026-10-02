@@ -351,11 +351,12 @@ test("T-14 a clock one hour ahead still orders by HLC", async ({ twoDevices, ser
   const id = await createCasualty(a, name);
   await expect.poll(async () => (await serverCounts(name)).cards.length, { timeout: 20_000 }).toBe(1);
   await waitForListed(b, name);
-  // Install before the edit page loads so its timers and Date.now share this clock.
+  // The edit screen reads the query on the client, so its static shell has no
+  // name field. Open it while the clock is still running, then freeze time.
   await b.clock.install();
-  await b.context().setOffline(true);
   await b.goto(`/casualties/card/edit?id=${encodeURIComponent(id)}&section=A`);
   await expect(b.getByTestId("patient-name-input")).toBeVisible();
+  await b.context().setOffline(true);
   await b.clock.setFixedTime(Date.now() + 60 * 60 * 1000);
   // editField advances the fixed clock only long enough for the debounce, and
   // does not return until IndexedDB has the new name.
