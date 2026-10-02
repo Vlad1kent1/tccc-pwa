@@ -48,16 +48,18 @@ export async function boot(page: Page): Promise<void> {
 }
 
 export async function createCasualty(page: Page, lastName: string): Promise<string> {
-  const lastNameField = page.getByTestId("patient-name-input");
-  await visit(page, "/casualties/new");
-  const opened = await lastNameField
-    .waitFor({ state: "visible", timeout: 30_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!opened) {
-    await page.goto("/casualties/new", { waitUntil: "domcontentloaded" }).catch(() => undefined);
-    await expect(lastNameField).toBeVisible({ timeout: 30_000 });
+  // A full unload drops the wizard's in-memory "create in progress" card so the
+  // next name cannot overwrite the one just saved.
+  await page.goto("about:blank").catch(() => undefined);
+  try {
+    await page.goto("/casualties/new", { waitUntil: "domcontentloaded" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("interrupted")) throw error;
   }
+  const lastNameField = page.getByTestId("patient-name-input");
+  await expect(lastNameField).toBeVisible({ timeout: 30_000 });
+  await expect(lastNameField).toBeEnabled({ timeout: 15_000 });
   await lastNameField.fill(lastName);
   await lastNameField.blur();
   // history.replaceState updates the query without a document navigation.
