@@ -1,16 +1,9 @@
-import { zodResolver } from "@hookform/resolvers/zod";
 import type { FieldErrors, FieldValues, Resolver } from "react-hook-form";
 import type { ZodType } from "zod";
 import { normalizeForm } from "./values";
 
 const FORM_ROW_ID = "00000000-0000-4000-8000-000000000000";
 const FORM_HLC = "0000000000000:0000:form";
-
-/** react-hook-form resolver over a shared section schema, with blank inputs treated as null. */
-export function sharedResolver<T extends FieldValues>(schema: ZodType<T>): Resolver<T> {
-  const resolve = zodResolver(schema as never) as Resolver<T>;
-  return (values, context, options) => resolve(normalizeForm(values) as T, context, options);
-}
 
 /**
  * Validates a child-row form with the shared row schema. Identity and clock fields

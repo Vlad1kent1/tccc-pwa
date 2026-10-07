@@ -152,6 +152,8 @@ describe("softDelete and listActive", () => {
 
     const active = await repo.listActive();
     expect(active.map((c) => c.id)).toEqual([kept.id]);
+    expect(kept.active).toBe(1);
+    expect((await repo.getById(removed.id))!.active).toBe(0);
     expect((await repo.getById(removed.id))!.deletedAt).not.toBeNull();
     await expect(repo.updateFields(removed.id, { notes: "late edit" })).rejects.toBeInstanceOf(CardNotFoundError);
 

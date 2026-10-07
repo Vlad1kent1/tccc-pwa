@@ -155,6 +155,7 @@ describe('sync API', () => {
       .query({ cardId, resolved: 'false' })
       .expect(200);
     expect(listed.body).toHaveLength(1);
+    expect(listed.body[0].id).toBe(merged.body.results[0].conflicts[0].id);
 
     const resolved = await request(app.getHttpServer())
       .post(`/api/sync/conflicts/${listed.body[0].id}/resolve`)
@@ -212,5 +213,96 @@ describe('sync API', () => {
     expect(response.body.results[1].status).toBe('rejected');
     expect(response.body.results[1].error.code).toBe('VALIDATION');
     expect(await prisma.vitalSigns.count({ where: { cardId } })).toBe(0);
+  });
+
+  it('restores a discarded vital row through the conflict id from push', async () => {
+    const cardId = newId();
+    const vitalId = newId();
+    const measuredAt = '2026-09-24T12:00:00.000Z';
+    const vital = (pulseRate: number, clock: string) => ({
+      id: vitalId,
+      cardId,
+      clientUpdatedAt: clock,
+      deletedAt: null,
+      measuredAt,
+      pulseRate,
+      pulseLocation: null,
+      systolic: null,
+      diastolic: null,
+      respiratoryRate: null,
+      spo2: null,
+      avpu: null,
+      painScale: null,
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/sync/push')
+      .send({
+        deviceId: DEVICE_A,
+        mutations: [
+          {
+            mutationId: newId(),
+            cardId,
+            op: 'card.upsert',
+            baseVersion: null,
+            patch: { lastName: 'Melnyk' },
+            changedFields: ['lastName'],
+            hlc: hlc(1_790_000_005_000, DEVICE_A),
+          },
+        ],
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/api/sync/push')
+      .send({
+        deviceId: DEVICE_A,
+        mutations: [
+          {
+            mutationId: newId(),
+            cardId,
+            op: 'child.upsert',
+            entity: 'vitalSigns',
+            baseVersion: 1,
+            hlc: hlc(1_790_000_005_100, DEVICE_A),
+            row: vital(70, hlc(1_790_000_005_100, DEVICE_A)),
+          },
+        ],
+      })
+      .expect(201);
+
+    const merged = await request(app.getHttpServer())
+      .post('/api/sync/push')
+      .send({
+        deviceId: DEVICE_B,
+        mutations: [
+          {
+            mutationId: newId(),
+            cardId,
+            op: 'child.upsert',
+            entity: 'vitalSigns',
+            baseVersion: 1,
+            hlc: hlc(1_790_000_005_200, DEVICE_B),
+            row: vital(99, hlc(1_790_000_005_200, DEVICE_B)),
+          },
+        ],
+      })
+      .expect(201);
+
+    expect(merged.body.results[0].status).toBe('merged');
+    expect(merged.body.results[0].card.vitalSigns[0].pulseRate).toBe(99);
+    const conflictId = merged.body.results[0].conflicts[0].id as string;
+    expect(conflictId).toEqual(expect.any(String));
+
+    const resolved = await request(app.getHttpServer())
+      .post(`/api/sync/conflicts/${conflictId}/resolve`)
+      .send({ choice: 'discarded' })
+      .expect(201);
+
+    expect(resolved.body.conflict.resolvedBy).toBe('discarded');
+    expect(resolved.body.card.vitalSigns).toEqual([
+      expect.objectContaining({ id: vitalId, pulseRate: 70, deletedAt: null }),
+    ]);
+    expect(await prisma.vitalSigns.count({ where: { cardId } })).toBe(1);
   });
 });

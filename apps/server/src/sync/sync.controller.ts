@@ -31,6 +31,10 @@ export class SyncController {
     return this.sync.listConflicts(query as unknown as ListConflictsQuery);
   }
 
+  /**
+   * Applies Keep (`kept`) or Use other (`discarded`) for one server conflict.
+   * The id is the one returned on the push result and by GET /sync/conflicts.
+   */
   @Post('conflicts/:id/resolve')
   resolve(@Param('id', ParseUUIDPipe) id: string, @Body() body: ResolveConflictDto) {
     return this.sync.resolve(id, body as unknown as ResolveConflict);

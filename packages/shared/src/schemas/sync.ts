@@ -87,6 +87,8 @@ export const pushRequestSchema = z.object({
 export type PushRequest = z.infer<typeof pushRequestSchema>;
 
 export const syncConflictSchema = z.object({
+  /** Primary key of the server `SyncConflict` row. Resolution posts this id. */
+  id: uuidSchema,
   entity: z.enum(["card", ...CHILD_ENTITIES]),
   entityId: uuidSchema,
   field: z.string(),
@@ -94,6 +96,35 @@ export const syncConflictSchema = z.object({
   discarded: z.unknown(),
 });
 export type SyncConflictInfo = z.infer<typeof syncConflictSchema>;
+
+export const resolveConflictBodySchema = z
+  .object({
+    choice: z.enum(["kept", "discarded"]),
+  })
+  .strict();
+export type ResolveConflictBody = z.infer<typeof resolveConflictBodySchema>;
+
+/** Row returned by `GET /api/sync/conflicts` and by resolve. */
+export const storedConflictSchema = z.object({
+  id: uuidSchema,
+  cardId: uuidSchema,
+  entity: z.enum(["card", ...CHILD_ENTITIES]),
+  entityId: uuidSchema,
+  field: z.string(),
+  keptValue: z.unknown(),
+  discardedValue: z.unknown(),
+  discardedDeviceId: uuidSchema,
+  createdAt: isoDateTimeSchema,
+  resolvedAt: isoDateTimeSchema.nullable(),
+  resolvedBy: z.enum(["kept", "discarded"]).nullable(),
+});
+export type StoredConflict = z.infer<typeof storedConflictSchema>;
+
+export const resolveConflictResponseSchema = z.object({
+  conflict: storedConflictSchema,
+  card: casualtyCardSchema,
+});
+export type ResolveConflictResponse = z.infer<typeof resolveConflictResponseSchema>;
 
 export const MUTATION_ERROR_CODES = ["VALIDATION", "NOT_FOUND", "INTERNAL"] as const;
 

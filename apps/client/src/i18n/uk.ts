@@ -17,6 +17,7 @@ export const uk: Messages = {
     syncing: "Синхронізація",
     degraded: "Нестабільна мережа",
     pending: "Очікує: {count}",
+    stuck: "Черга застрягла: зміни не надіслані",
   },
   update: {
     available: "Доступне оновлення",
@@ -58,6 +59,7 @@ export const uk: Messages = {
     discarded: "Відхилено",
     keep: "Залишити",
     useOther: "Взяти інше",
+    resolveFailed: "Не вдалося зберегти рішення. Конфлікт досі відкритий.",
   },
   settings: {
     responder: "Профіль рятувальника",
@@ -174,6 +176,9 @@ export const uk: Messages = {
     edit: "Редагувати",
     vitals: "Додати показники",
     print: "Друк / передача",
+    remoteChange: "Картку оновлено, поки ви її редагували. Не збережені зміни лишилися на формі.",
+    keepMine: "Залишити мої правки",
+    loadUpdated: "Завантажити оновлену картку",
     none: "—",
     tourniquets: "Джгути",
     injuries: "Поранення",

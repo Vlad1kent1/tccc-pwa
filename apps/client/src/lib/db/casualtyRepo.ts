@@ -14,7 +14,7 @@ import {
   type ChildRowByEntity,
   type Mutation,
 } from "@tccc/shared";
-import { db as defaultDb, type TcccDB } from "./schema";
+import { activeFlag, db as defaultDb, type TcccDB } from "./schema";
 import { getDeviceId, nextHlc } from "./meta";
 import type { LocalCasualtyCard, OutboxMutation } from "./types";
 
@@ -67,6 +67,7 @@ export function createCasualtyRepo(db: TcccDB = defaultDb, now: () => number = D
       clientUpdatedAt: hlc,
       // An unresolved conflict stays visible until the user resolves it in Settings.
       syncStatus: card.syncStatus === "conflict" ? "conflict" : "pending",
+      active: activeFlag(card.deletedAt),
     };
   }
 
@@ -92,6 +93,7 @@ export function createCasualtyRepo(db: TcccDB = defaultDb, now: () => number = D
         clientUpdatedAt: hlc,
         serverUpdatedAt: null,
         deletedAt: null,
+        active: 1,
       };
       await db.casualties.add(card);
       // The first push carries every field so the server can create the full row.
@@ -235,12 +237,15 @@ export function createCasualtyRepo(db: TcccDB = defaultDb, now: () => number = D
     return db.casualties.get(id);
   }
 
-  // IndexedDB does not index null keys, so "deletedAt is null" cannot be an index query.
   async function listActive(): Promise<LocalCasualtyCard[]> {
-    return db.casualties.filter((card) => card.deletedAt == null).toArray();
+    return db.casualties.where("active").equals(1).toArray();
   }
 
-  return { create, updateFields, upsertChild, deleteChild, softDelete, getById, listActive };
+  function readWrite<T>(work: () => Promise<T>): Promise<T> {
+    return db.transaction("rw", writeTables, work);
+  }
+
+  return { create, updateFields, upsertChild, deleteChild, softDelete, getById, listActive, readWrite };
 }
 
 export type CasualtyRepo = ReturnType<typeof createCasualtyRepo>;

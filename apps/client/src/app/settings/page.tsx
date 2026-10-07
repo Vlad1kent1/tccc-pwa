@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Preferences } from "@/components/preferences";
-import { SyncPanel } from "@/components/sync-panel";
-import { AccountPanel } from "./account-panel";
-import { SettingsTitle } from "./settings-title";
-import { DevToolsPanel } from "./dev-tools-panel";
-import { StorageStatusPanel } from "./storage-status-panel";
+import { Preferences } from "@/components/pages/settings/preferences";
+import { SyncPanel } from "@/components/pages/settings/sync-panel";
+import { AccountPanel } from "@/components/pages/settings/account-panel";
+import { SettingsTitle } from "@/components/pages/settings/settings-title";
+import { DevToolsPanel } from "@/components/pages/settings/dev-tools-panel";
+import { StorageStatusPanel } from "@/components/pages/settings/storage-status-panel";
 
 export const metadata: Metadata = {
   title: "Settings · TCCC Casualty Card",

@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { SectionTabs } from "@/components/card-editor";
+import { TacticalBoard } from "@/components/pages/casualties/board/tactical-board";
 
 export default function EditCasualtyPage() {
   return (
     <Suspense fallback={null}>
-      <SectionTabs />
+      <TacticalBoard mode="edit" />
     </Suspense>
   );
 }

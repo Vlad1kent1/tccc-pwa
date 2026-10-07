@@ -26,7 +26,7 @@ function scheduleAfterWrite(db: TcccDB): void {
 }
 
 function armInterval(db: TcccDB): void {
-  const delay = getSyncSnapshot().connectivity === "online" ? ONLINE_INTERVAL_MS : OFFLINE_INTERVAL_MS;
+  const delay = getSyncSnapshot().connectivity === "offline" ? OFFLINE_INTERVAL_MS : ONLINE_INTERVAL_MS;
   intervalTimer = setTimeout(() => {
     void syncNow(db).finally(() => armInterval(db));
   }, delay);

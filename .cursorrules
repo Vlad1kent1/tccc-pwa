@@ -1,0 +1,54 @@
+# Frontend (Client) Component Architecture Rules
+
+You must strictly follow these structural rules for the Next.js client application. 
+
+**1. `app` Directory Strictness (Routing Only):**
+- The `src/app` directory is strictly reserved for Next.js App Router files (`page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `route.ts`).
+- NEVER place UI components, sections, or fragments inside the `app` directory. Move all existing UI components from `app` to `src/components`.
+
+**2. Component Directory Structure (Folder as Component):**
+- Every component must have its own dedicated folder.
+- The folder name must be the component's name in `kebab-case` (e.g., `theme-switcher`, `section-about`).
+- The actual component code must be placed in a file named exactly `index.tsx` inside that folder (e.g., `src/components/layout/theme-switcher/index.tsx`).
+
+**3. Categorization Strategy:**
+Organize components into the following logical sub-directories within `src/components`, matching the reference architecture:
+- `layout/`: Global layout components (e.g., `header/`, `footer/`, `theme-switcher/`). Provide an `index.ts` barrel file if necessary[cite: 1].
+- `pages/`: Page-specific sections grouped by the page name. For example, `pages/portfolio/` containing `section-about/`, `section-contact/`, `section-projects/`[cite: 1].
+- `ui/`: Reusable, atomic UI elements (e.g., buttons, inputs, calendars). *Note: Ensure these also follow the `folder-name/index.tsx` structure for consistency, or keep them as flat files (like `button.tsx`) ONLY if explicitly requested[cite: 1].*
+
+**4. Import & Refactoring Guidelines:**
+- When refactoring, automatically create the correct `kebab-case` directories and `index.tsx` files.
+- Ensure all import paths across the project are updated to reflect the new structure.
+- Prefer absolute imports (e.g., `@/components/layout/header`) over relative paths.
+
+
+# Git Commit Standards (Conventional Commits)
+
+You must strictly follow the Conventional Commits specification for all git commit messages generated or suggested.
+
+**1. Commit Message Format:**
+`<type>(<optional scope>): <description>`
+
+**2. Allowed Types:**
+- `feat`: (Feature) Adding a new feature or capability for the user (e.g., new API endpoint, new UI component).
+- `fix`: (Bug Fix) Fixing a bug, error, or unintended behavior.
+- `chore`: (Routine/Maintenance) Updating dependencies, configuration files (.gitignore, Docker), or build scripts. No changes to production application code.
+- `docs`: (Documentation) Changes made exclusively to documentation (e.g., README.md, inline comments, API swagger docs).
+- `test`: (Testing) Adding missing tests or correcting existing ones (e.g., Playwright, unit tests). No production code is touched.
+- `refactor`: (Refactoring) Rewriting existing code to improve readability, structure, or performance without changing its external behavior.
+- `style`: (Code Style) Changes that do not affect the meaning of the code (formatting, missing semi-colons, indentation, linting fixes).
+
+**3. Monorepo Scopes (Required when applicable):**
+Since this is a monorepo, you MUST include the affected workspace/package as the scope in parentheses to clarify where the change occurred. 
+- Use `(client)` for changes in the Next.js frontend.
+- Use `(server)` for changes in the NestJS backend.
+- Use `(shared)` for changes in shared packages (e.g., Zod schemas, types).
+- Use `(e2e)` for Playwright test suite changes.
+- Omit the scope only if the change affects the entire repository globally.
+
+**Examples:**
+- `feat(client): add interactive mannequin for injury selection`
+- `fix(server): resolve sync conflict resolution discarding child rows`
+- `chore(shared): update zod validation for DD1380 form`
+- `refactor(client): move ui components to kebab-case folders`

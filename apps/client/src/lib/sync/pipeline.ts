@@ -1,6 +1,7 @@
 import {
+  compareHlc,
+  conflictNeedsReview,
   initialHlc,
-  newId,
   receiveHlc,
   type CasualtyCard,
   type Mutation,
@@ -12,19 +13,15 @@ import type { TcccDB } from "../db/schema";
 import type { LocalConflict, OutboxMutation } from "../db/types";
 import { isRetryableError, pullChanges, pushMutations } from "./api";
 import { coalesceOutbox } from "./coalesce";
-import { rebaseCard } from "./rebase";
+import { aggregateClock, rebaseCard } from "./rebase";
 
-const CRITICAL_CARD_FIELDS = new Set(["evacPriority", "allergies"]);
 const DELETED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+/** How many pulled cards to apply before yielding so a catch-up can paint. */
+const PULL_APPLY_CHUNK = 20;
 
 export interface PushRetry {
   attempts: number;
   message: string;
-}
-
-function isCritical(conflict: SyncConflictInfo): boolean {
-  if (conflict.entity === "tourniquet") return true;
-  return conflict.entity === "card" && CRITICAL_CARD_FIELDS.has(conflict.field);
 }
 
 function toMutation(entry: OutboxMutation): Mutation {
@@ -41,65 +38,88 @@ async function rememberServerTime(db: TcccDB, serverTime: string): Promise<void>
   await setMeta(db, "serverClockOffsetMs", serverMs - Date.now());
 }
 
+function yieldToMainThread(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 async function unresolvedConflict(db: TcccDB, cardId: string): Promise<boolean> {
-  const count = await db.conflicts.filter((conflict) => conflict.cardId === cardId && conflict.resolvedAt == null).count();
+  const count = await db.conflicts.where("[cardId+open]").equals([cardId, 1]).count();
   return count > 0;
 }
 
-async function copyCriticalConflicts(db: TcccDB, cardId: string, conflicts: SyncConflictInfo[]): Promise<boolean> {
-  const critical = conflicts.filter(isCritical);
-  if (critical.length === 0) return unresolvedConflict(db, cardId);
+/** Stores review conflicts returned by this device's push, using the server row id. */
+async function copyReviewConflicts(db: TcccDB, cardId: string, conflicts: SyncConflictInfo[]): Promise<boolean> {
+  const review = conflicts.filter(conflictNeedsReview);
+  if (review.length === 0) return unresolvedConflict(db, cardId);
 
-  const existing = await db.conflicts.where("cardId").equals(cardId).toArray();
-  const seen = new Set(
-    existing.filter((conflict) => conflict.resolvedAt == null).map((conflict) => `${conflict.entity}:${conflict.entityId}:${conflict.field}`),
-  );
+  const existing = await db.conflicts.where("[cardId+open]").equals([cardId, 1]).toArray();
+  const seen = new Set(existing.map((conflict) => conflict.id));
   const now = new Date().toISOString();
   const rows: LocalConflict[] = [];
-  for (const conflict of critical) {
-    const key = `${conflict.entity}:${conflict.entityId}:${conflict.field}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rows.push({ ...conflict, id: newId(), cardId, createdAt: now, resolvedAt: null });
+  for (const conflict of review) {
+    if (seen.has(conflict.id)) continue;
+    seen.add(conflict.id);
+    rows.push({ ...conflict, cardId, createdAt: now, resolvedAt: null, open: 1 });
   }
-  if (rows.length > 0) await db.conflicts.bulkAdd(rows);
+  if (rows.length > 0) await db.conflicts.bulkPut(rows);
   return true;
 }
 
-async function writeRebased(db: TcccDB, server: CasualtyCard, conflict: boolean): Promise<void> {
+const REBASE_TABLES = (db: TcccDB) => [db.casualties, db.outbox, db.conflicts] as const;
+
+/**
+ * Reads the still-queued outbox and writes the rebased card in the caller's
+ * transaction. An incoming aggregate older than the stored row is ignored so a
+ * stale pull cannot clobber a newer local card.
+ */
+async function commitRebase(db: TcccDB, server: CasualtyCard, conflict: boolean): Promise<boolean> {
+  const stored = await db.casualties.get(server.id);
+  if (stored && compareHlc(aggregateClock(server.fieldClock), stored.clientUpdatedAt) < 0) return false;
+
   const queued = await db.outbox.where("cardId").equals(server.id).and((entry) => entry.status === "queued").sortBy("seq");
-  const syncStatus = conflict ? "conflict" : queued.length > 0 ? "pending" : "synced";
+  const openConflict = conflict || (await unresolvedConflict(db, server.id));
+  const syncStatus = openConflict ? "conflict" : queued.length > 0 ? "pending" : "synced";
   await db.casualties.put(rebaseCard(server, queued, syncStatus));
-  if (queued.length > 0) {
-    await db.outbox.where("cardId").equals(server.id).and((entry) => entry.status === "queued").modify((entry) => {
+  const seqs = queued.flatMap((entry) => (entry.seq == null ? [] : [entry.seq]));
+  if (seqs.length > 0) {
+    await db.outbox.where("seq").anyOf(seqs).modify((entry) => {
       entry.baseVersion = server.version;
     });
   }
+  return true;
+}
+
+async function writeRebased(db: TcccDB, server: CasualtyCard, conflict: boolean): Promise<boolean> {
+  return db.transaction("rw", REBASE_TABLES(db), () => commitRebase(db, server, conflict));
 }
 
 async function applyResults(db: TcccDB, results: MutationResult[]): Promise<void> {
-  const servers = new Map<string, CasualtyCard>();
-  const conflicts = new Map<string, boolean>();
+  await db.transaction("rw", REBASE_TABLES(db), async () => {
+    const servers = new Map<string, CasualtyCard>();
+    const conflicts = new Map<string, boolean>();
 
-  for (const result of results) {
-    if (result.status === "rejected") {
-      await db.outbox.where("mutationId").equals(result.mutationId).modify((entry) => {
-        entry.status = "failed";
-        entry.lastError = `${result.error.code}: ${result.error.message}`;
-      });
-      continue;
+    for (const result of results) {
+      if (result.status === "rejected") {
+        await db.outbox.where("mutationId").equals(result.mutationId).modify((entry) => {
+          entry.status = "failed";
+          entry.lastError = `${result.error.code}: ${result.error.message}`;
+        });
+        continue;
+      }
+
+      await db.outbox.where("mutationId").equals(result.mutationId).delete();
+      servers.set(result.card.id, result.card);
+      const critical = result.status === "merged" ? await copyReviewConflicts(db, result.card.id, result.conflicts) : false;
+      conflicts.set(result.card.id, (conflicts.get(result.card.id) ?? false) || critical);
     }
 
-    await db.outbox.where("mutationId").equals(result.mutationId).delete();
-    servers.set(result.card.id, result.card);
-    const critical = result.status === "merged" ? await copyCriticalConflicts(db, result.card.id, result.conflicts) : false;
-    conflicts.set(result.card.id, (conflicts.get(result.card.id) ?? false) || critical);
-  }
-
-  for (const [cardId, server] of servers) {
-    const critical = conflicts.get(cardId) || (await unresolvedConflict(db, cardId));
-    await writeRebased(db, server, critical);
-  }
+    for (const [cardId, server] of servers) {
+      const critical = conflicts.get(cardId) || (await unresolvedConflict(db, cardId));
+      await commitRebase(db, server, critical);
+    }
+  });
 }
 
 /** Push queued mutations. `onRetry` runs after a network or 5xx failure. */
@@ -149,14 +169,17 @@ export async function pullAll(db: TcccDB): Promise<void> {
   while (hasMore) {
     const page = await pullChanges(since);
     await rememberServerTime(db, page.serverTime);
-    for (const card of page.cards) {
-      const critical = await unresolvedConflict(db, card.id);
-      await writeRebased(db, card, critical);
-      await purgeExpired(db, card);
+    for (let index = 0; index < page.cards.length; index += 1) {
+      const card = page.cards[index]!;
+      const wrote = await writeRebased(db, card, false);
+      if (wrote) await purgeExpired(db, card);
+      const moreInPage = index + 1 < page.cards.length;
+      if (moreInPage && (index + 1) % PULL_APPLY_CHUNK === 0) await yieldToMainThread();
     }
     since = page.nextSince;
     await setLastPullSeq(db, since);
     hasMore = page.hasMore;
+    if (hasMore) await yieldToMainThread();
   }
 }
 

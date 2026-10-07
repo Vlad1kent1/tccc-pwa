@@ -5,13 +5,28 @@ import type { Connectivity } from "./connectivity";
 
 export type SyncPhase = "idle" | "syncing" | Connectivity;
 
+/** Why the last sync attempt failed. `status` is the HTTP code when the API answered. */
+export interface SyncErrorPayload {
+  message: string;
+  status: number | null;
+}
+
 export interface SyncSnapshot {
   state: SyncPhase;
   connectivity: Connectivity;
   pendingCount: number;
   lastSyncAt: number | null;
-  lastError: string | null;
+  lastError: SyncErrorPayload | null;
   conflictCount: number;
+}
+
+/** Header and status-bar mode. Degraded covers API failures; offline is connectivity only. */
+export function connectivityMode(status: Pick<SyncSnapshot, "state" | "connectivity">): "online" | "offline" | "syncing" | "degraded" {
+  if (status.state === "syncing") return "syncing";
+  if (status.state === "degraded" || status.state === "unknown") return "degraded";
+  if (status.state === "offline" || status.connectivity === "offline") return "offline";
+  if (status.connectivity === "degraded" || status.connectivity === "unknown") return "degraded";
+  return "online";
 }
 
 const serverSnapshot: SyncSnapshot = {

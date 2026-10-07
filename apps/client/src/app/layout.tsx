@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SerwistProvider } from "@serwist/turbopack/react";
-import { AppShell } from "@/components/app-shell";
-import { StorageBootstrap } from "@/components/storage-bootstrap";
+import { AppShell } from "@/components/layout/app-shell";
+import { StorageBootstrap } from "@/components/layout/storage-bootstrap";
 import "./globals.css";
 
 const geistSans = Geist({

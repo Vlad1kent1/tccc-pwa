@@ -28,6 +28,11 @@ export type LocalCasualtyCard = CardFields &
     clientUpdatedAt: string;
     serverUpdatedAt: string | null;
     deletedAt: string | null;
+    /**
+     * 1 while the card is not deleted. IndexedDB does not index null, so
+     * `deletedAt == null` cannot be an index query.
+     */
+    active: 0 | 1;
   };
 
 export type OutboxStatus = "queued" | "inflight" | "failed";
@@ -41,10 +46,11 @@ export type OutboxMutation = Mutation & {
 };
 
 export type LocalConflict = SyncConflictInfo & {
-  id: string;
   cardId: string;
   createdAt: string;
   resolvedAt: string | null;
+  /** 1 while the conflict is unresolved. IndexedDB does not index null `resolvedAt`. */
+  open: 0 | 1;
 };
 
 export interface ResponderProfile {

@@ -48,6 +48,7 @@ describe("rebaseCard", () => {
     expect(local.serverVersion).toBe(4);
     expect(local.lastName).toBe("Server");
     expect(local.syncStatus).toBe("synced");
+    expect(local.active).toBe(1);
     expect(local.changeSeq).toBe("40");
     expect(local.tourniquets).toHaveLength(1);
   });

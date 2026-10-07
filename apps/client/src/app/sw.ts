@@ -49,6 +49,8 @@ const serwist = new Serwist({
 });
 
 const PAGE_CACHE = "pages";
+/** Field 2G needs more than one 3s round trip before the cached shell is used. */
+const NAVIGATION_TIMEOUT_MS = 12_000;
 
 async function asDocument(response: Response): Promise<Response> {
   if (!response.redirected) return response;
@@ -60,19 +62,18 @@ async function asDocument(response: Response): Promise<Response> {
 async function respondNavigation(request: Request): Promise<Response> {
   const cache = await caches.open(PAGE_CACHE);
   const path = new URL(request.url).pathname;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NAVIGATION_TIMEOUT_MS);
   try {
-    const response = await Promise.race([
-      fetch(request),
-      new Promise<Response>((_, reject) => {
-        setTimeout(() => reject(new Error("navigation timeout")), 3000);
-      }),
-    ]);
+    const response = await fetch(request, { signal: controller.signal });
     if (response.ok) {
       await cache.put(request, response.clone());
       return response;
     }
   } catch {
     // Offline, timed out, or aborted. Fall through to a stored document.
+  } finally {
+    clearTimeout(timer);
   }
   const cached =
     (await cache.match(request, { ignoreVary: true })) ??

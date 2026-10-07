@@ -276,8 +276,8 @@ export class SyncService {
     }
 
     const saved = await this.saveCard(tx, card, columns, clock);
-    await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
-    return resultOf(mutation.mutationId, fastPath, toCardDto(saved), discarded);
+    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
+    return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
 
   private async applyCardDelete(
@@ -322,8 +322,8 @@ export class SyncService {
       },
       include: cardWithChildren,
     });
-    await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
-    return resultOf(mutation.mutationId, fastPath, toCardDto(saved), discarded);
+    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
+    return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
 
   private async applyChildUpsert(
@@ -351,8 +351,8 @@ export class SyncService {
 
     const discarded = merged.discarded ? [merged.discarded] : [];
     const saved = await this.bumpCard(tx, card);
-    await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
-    return resultOf(mutation.mutationId, fastPath, toCardDto(saved), discarded);
+    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
+    return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
 
   private async applyChildDelete(
@@ -386,8 +386,8 @@ export class SyncService {
 
     const discarded = merged.discarded ? [merged.discarded] : [];
     const saved = await this.bumpCard(tx, card);
-    await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
-    return resultOf(mutation.mutationId, fastPath, toCardDto(saved), discarded);
+    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
+    return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
 
   private async applyDiscarded(
@@ -475,21 +475,34 @@ export class SyncService {
     createdByDeviceId: string,
     cardId: string,
     discarded: DiscardedValue[],
-  ): Promise<void> {
+  ): Promise<SyncConflictInfo[]> {
     if (discarded.length === 0) {
-      return;
+      return [];
     }
-    await tx.syncConflict.createMany({
-      data: discarded.map((item) => ({
-        id: newId(),
-        cardId,
-        entity: item.entity,
-        entityId: item.entityId,
-        field: item.field,
-        keptValue: toJson(item.kept),
-        discardedValue: toJson(item.discarded),
-        discardedDeviceId: item.incomingLost ? deviceId : createdByDeviceId,
-      })),
+    const rows = discarded.map((item) => ({
+      id: newId(),
+      cardId,
+      entity: item.entity,
+      entityId: item.entityId,
+      field: item.field,
+      keptValue: toJson(item.kept),
+      discardedValue: toJson(item.discarded),
+      discardedDeviceId: item.incomingLost ? deviceId : createdByDeviceId,
+    }));
+    await tx.syncConflict.createMany({ data: rows });
+    return rows.flatMap((row, index) => {
+      const item = discarded[index];
+      if (!item) return [];
+      return [
+        {
+          id: row.id,
+          entity: item.entity,
+          entityId: item.entityId,
+          field: item.field,
+          kept: item.kept,
+          discarded: item.discarded,
+        },
+      ];
     });
   }
 
@@ -599,27 +612,12 @@ function resultOf(
   mutationId: string,
   fastPath: boolean,
   card: CasualtyCard,
-  discarded: DiscardedValue[],
+  conflicts: SyncConflictInfo[],
 ): MutationResult {
   if (fastPath) {
     return { mutationId, status: 'applied', card };
   }
-  return {
-    mutationId,
-    status: 'merged',
-    card,
-    conflicts: discarded.map(toConflictInfo),
-  };
-}
-
-function toConflictInfo(item: DiscardedValue): SyncConflictInfo {
-  return {
-    entity: item.entity,
-    entityId: item.entityId,
-    field: item.field,
-    kept: item.kept,
-    discarded: item.discarded,
-  };
+  return { mutationId, status: 'merged', card, conflicts };
 }
 
 function rejectedResult(
@@ -640,11 +638,24 @@ function readMutationId(raw: unknown): string | null {
 }
 
 function readStoredResult(value: Prisma.JsonValue): MutationResult {
-  const parsed = mutationResultSchema.safeParse(value);
+  const parsed = mutationResultSchema.safeParse(stripConflictsWithoutIds(value));
   if (!parsed.success) {
     throw new Error('Stored mutation result is invalid');
   }
   return parsed.data;
+}
+
+/** Replay of a mutation stored before conflict ids existed still returns the card. */
+function stripConflictsWithoutIds(value: Prisma.JsonValue): Prisma.JsonValue {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  if (record.status !== 'merged' || !Array.isArray(record.conflicts)) return value;
+  return {
+    ...record,
+    conflicts: record.conflicts.filter((item) => {
+      return typeof item === 'object' && item !== null && typeof (item as { id?: unknown }).id === 'string';
+    }),
+  } as Prisma.JsonValue;
 }
 
 function toJson(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {

@@ -1,4 +1,4 @@
-import { pullQuerySchema, pushRequestSchema, uuidSchema } from '@tccc/shared';
+import { pullQuerySchema, pushRequestSchema, resolveConflictBodySchema, uuidSchema } from '@tccc/shared';
 import { z } from 'zod';
 
 export class PushRequestDto {
@@ -21,11 +21,7 @@ export class ListConflictsQueryDto {
   static schema = listConflictsQuerySchema;
 }
 
-export const resolveConflictSchema = z
-  .object({
-    choice: z.enum(['kept', 'discarded']),
-  })
-  .strict();
+export const resolveConflictSchema = resolveConflictBodySchema;
 export type ResolveConflict = z.infer<typeof resolveConflictSchema>;
 
 export class ResolveConflictDto {

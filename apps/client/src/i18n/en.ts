@@ -15,6 +15,7 @@ export const en = {
     syncing: "Syncing",
     degraded: "Unstable",
     pending: "{count} pending",
+    stuck: "Stuck outbox: changes were not sent",
   },
   update: {
     available: "Update available",
@@ -56,6 +57,7 @@ export const en = {
     discarded: "Discarded",
     keep: "Keep",
     useOther: "Use other",
+    resolveFailed: "Could not save this decision. The conflict is still open.",
   },
   settings: {
     responder: "Responder profile",
@@ -172,6 +174,9 @@ export const en = {
     edit: "Edit",
     vitals: "Add vitals",
     print: "Print / handover",
+    remoteChange: "This card was updated while you were editing. Your unsaved changes are still on the form.",
+    keepMine: "Keep my edits",
+    loadUpdated: "Load updated card",
     none: "—",
     tourniquets: "Tourniquets",
     injuries: "Injuries",

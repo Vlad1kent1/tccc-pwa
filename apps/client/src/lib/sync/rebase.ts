@@ -1,5 +1,5 @@
 import { CHILD_COLLECTIONS, compareHlc, type CasualtyCard, type ChildEntity } from "@tccc/shared";
-import type { LocalCasualtyCard, OutboxMutation, SyncStatus } from "@/lib/db";
+import { activeFlag, type LocalCasualtyCard, type OutboxMutation, type SyncStatus } from "@/lib/db";
 
 function maxHlc(values: string[]): string | undefined {
   return values.reduce<string | undefined>((best, value) => {
@@ -8,8 +8,13 @@ function maxHlc(values: string[]): string | undefined {
   }, undefined);
 }
 
+/** Newest field clock on a server aggregate. This is the card's `clientUpdatedAt` after a pull. */
+export function aggregateClock(fieldClock: Record<string, string>): string {
+  return maxHlc(Object.values(fieldClock)) ?? "0000000000000:0000:server";
+}
+
 export function localFromServer(card: CasualtyCard, syncStatus: SyncStatus): LocalCasualtyCard {
-  const clientUpdatedAt = maxHlc(Object.values(card.fieldClock)) ?? "0000000000000:0000:server";
+  const clientUpdatedAt = aggregateClock(card.fieldClock);
   const { version, ...rest } = card;
   return {
     ...rest,
@@ -22,6 +27,7 @@ export function localFromServer(card: CasualtyCard, syncStatus: SyncStatus): Loc
     syncStatus,
     serverVersion: version,
     clientUpdatedAt,
+    active: activeFlag(card.deletedAt),
   };
 }
 
@@ -68,5 +74,6 @@ export function rebaseCard(
     if (compareHlc(mutation.hlc, card.clientUpdatedAt) > 0) card.clientUpdatedAt = mutation.hlc;
   }
 
+  card.active = activeFlag(card.deletedAt);
   return card;
 }

@@ -1,5 +1,5 @@
-import { CardWizard } from "@/components/card-wizard";
+import { TacticalBoard } from "@/components/pages/casualties/board/tactical-board";
 
 export default function NewCasualtyPage() {
-  return <CardWizard />;
+  return <TacticalBoard mode="new" />;
 }

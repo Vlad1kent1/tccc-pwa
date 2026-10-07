@@ -1,10 +1,13 @@
 import {
   pullResponseSchema,
   pushResponseSchema,
+  resolveConflictResponseSchema,
   type Mutation,
   type PullResponse,
   type PushRequest,
   type PushResponse,
+  type ResolveConflictBody,
+  type ResolveConflictResponse,
 } from "@tccc/shared";
 
 const TUNNEL_HEADERS = {
@@ -100,4 +103,16 @@ export function pullChanges(since: string, limit = 100, signal?: AbortSignal): P
   return request(`/api/sync/pull?${params.toString()}`, { signal }).then((value) =>
     parse(pullResponseSchema, value, "pull"),
   );
+}
+
+export function resolveConflict(
+  id: string,
+  choice: ResolveConflictBody["choice"],
+  signal?: AbortSignal,
+): Promise<ResolveConflictResponse> {
+  return request(`/api/sync/conflicts/${encodeURIComponent(id)}/resolve`, {
+    method: "POST",
+    body: JSON.stringify({ choice }),
+    signal,
+  }).then((value) => parse(resolveConflictResponseSchema, value, "resolve"));
 }

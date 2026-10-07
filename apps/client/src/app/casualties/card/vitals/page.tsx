@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { QuickVitalsForm } from "@/components/quick-vitals-form";
+import { QuickVitalsForm } from "@/components/pages/casualties/quick-vitals-form";
 
 export default function QuickVitalsPage() {
   return (
