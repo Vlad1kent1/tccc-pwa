@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TcccDB } from "@/lib/db/schema";
 import { ApiError } from "./api";
+import type { Connectivity } from "./connectivity";
 import { connectivityMode, getSyncSnapshot, patchSyncStatus } from "./status-store";
 
-const probeConnectivity = vi.fn(async () => "online" as const);
+const probeConnectivity = vi.fn(async (..._args: unknown[]): Promise<Connectivity> => "online");
 const pushOutbox = vi.fn();
-const pullAll = vi.fn(async () => undefined);
+const pullAll = vi.fn(async (..._args: unknown[]): Promise<void> => undefined);
 
 vi.mock("./connectivity", () => ({
   probeConnectivity: (...args: unknown[]) => probeConnectivity(...args),
