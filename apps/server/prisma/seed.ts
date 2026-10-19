@@ -1,3 +1,5 @@
+// Mock data for demos and load checks. Runs only through `pnpm db:seed:mock`;
+// nothing calls it on migrate or startup. Remove the cards with `pnpm db:wipe`.
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
