@@ -1,5 +1,6 @@
-import { compareHlc, mutationSchema, tourniquetId } from "@tccc/shared";
+import { compareHlc, mutationSchema, newId, parseHlc, tourniquetId } from "@tccc/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setServerClockOffset } from "../network-clock";
 import { CardNotFoundError, createCasualtyRepo, type CasualtyRepo } from "./casualtyRepo";
 import { getDeviceId } from "./meta";
 import { TcccDB } from "./schema";
@@ -140,6 +141,109 @@ describe("child rows", () => {
 
     const last = await db.outbox.orderBy("seq").last();
     expect(last).toMatchObject({ op: "child.delete", entity: "medication", entityId: med.id });
+  });
+});
+
+describe("unfinished rows", () => {
+  const blankVital = {
+    pulseRate: null,
+    pulseLocation: null,
+    systolic: null,
+    diastolic: null,
+    respiratoryRate: null,
+    spo2: null,
+    avpu: null,
+    painScale: null,
+  };
+
+  it("queues an unfinished row for sync like a finished one", async () => {
+    const card = await repo.create();
+    const fluid = await repo.upsertChild(card.id, "fluid", {
+      kind: "FLUID",
+      name: "LR",
+      volumeMl: null,
+      route: null,
+      administeredAt: null,
+    });
+
+    const last = await db.outbox.orderBy("seq").last();
+    expect(last).toMatchObject({ op: "child.upsert", entity: "fluid", row: { id: fluid.id, name: "LR", volumeMl: null } });
+    expect(mutationSchema.safeParse(last).success).toBe(true);
+  });
+
+  it("queues the delete of a synced row that was edited into an unfinished state", async () => {
+    const card = await repo.create();
+    const row = await repo.upsertChild(card.id, "vitalSigns", { ...blankVital, measuredAt: new Date(T0).toISOString(), pulseRate: 90 });
+    clock += 1000;
+    await repo.upsertChild(card.id, "vitalSigns", { ...blankVital, id: row.id, measuredAt: new Date(T0).toISOString() });
+    clock += 1000;
+    await repo.deleteChild(card.id, "vitalSigns", row.id);
+
+    const ops = (await db.outbox.orderBy("seq").toArray()).map((entry) => entry.op);
+    expect(ops).toEqual(["card.upsert", "child.upsert", "child.upsert", "child.delete"]);
+  });
+
+  it("queues rows that never synced before, and their deletions, exactly once", async () => {
+    const card = await repo.create();
+    await db.outbox.clear();
+    const hlcNow = card.clientUpdatedAt;
+    const draftFluid = { id: newId(), cardId: card.id, kind: "FLUID" as const, name: "LR", volumeMl: null, route: null, administeredAt: null, clientUpdatedAt: hlcNow, deletedAt: null };
+    const deletedDraft = {
+      id: newId(),
+      cardId: card.id,
+      category: "ANALGESIC" as const,
+      name: "Ketamine",
+      dose: "",
+      route: null,
+      administeredAt: null,
+      clientUpdatedAt: hlcNow,
+      deletedAt: new Date(T0).toISOString(),
+    };
+    const complete = { ...blankVital, id: newId(), cardId: card.id, measuredAt: new Date(T0).toISOString(), pulseRate: 88, clientUpdatedAt: hlcNow, deletedAt: null };
+    // As stored before this change: in the card, never in the outbox.
+    await db.casualties.put({ ...card, syncStatus: "synced", fluids: [draftFluid], medications: [deletedDraft], vitalSigns: [complete] });
+    clock += 1000;
+
+    expect(await repo.queueUnsyncedRows()).toBe(1);
+
+    const outbox = await db.outbox.orderBy("seq").toArray();
+    expect(outbox).toEqual([
+      expect.objectContaining({ op: "child.upsert", entity: "fluid", row: expect.objectContaining({ id: draftFluid.id }) }),
+      expect.objectContaining({ op: "child.delete", entity: "medication", entityId: deletedDraft.id }),
+    ]);
+    for (const entry of outbox) expect(mutationSchema.safeParse(entry).success).toBe(true);
+    const stored = await repo.getById(card.id);
+    expect(stored!.syncStatus).toBe("pending");
+    expect(stored!.fluids[0]!.clientUpdatedAt).toBe(outbox[0]!.hlc);
+
+    expect(await repo.queueUnsyncedRows()).toBe(0);
+    expect(await db.outbox.count()).toBe(2);
+  });
+});
+
+describe("network-adjusted clock", () => {
+  afterEach(() => {
+    setServerClockOffset(0);
+  });
+
+  it("stamps new writes with the server's time, not a wrong device clock", async () => {
+    setServerClockOffset(3_600_000);
+    const adjusted = createCasualtyRepo(db);
+    const before = Date.now() + 3_600_000;
+    const card = await adjusted.create({ lastName: "Hnatiuk" });
+    const after = Date.now() + 3_600_000;
+
+    expect(Date.parse(card.createdAt)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(card.createdAt)).toBeLessThanOrEqual(after);
+    expect(parseHlc(card.clientUpdatedAt).wallTime).toBeGreaterThanOrEqual(before);
+  });
+
+  it("records a clock for a card deletion", async () => {
+    const card = await repo.create();
+    clock += 1000;
+    await repo.softDelete(card.id);
+    const stored = await repo.getById(card.id);
+    expect(stored!.fieldClock.deletedAt).toBe(stored!.clientUpdatedAt);
   });
 });
 

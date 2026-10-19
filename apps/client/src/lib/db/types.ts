@@ -68,6 +68,15 @@ export interface MetaValues {
   responderProfile: ResponderProfile;
   persistenceRequested: boolean;
   locale: "en" | "uk";
+  /** Set once the pre-v3 localStorage extras bag has been merged into the cards. */
+  legacyBagMigrated: boolean;
+  /** Mirror of the unit token for the service worker, which cannot read localStorage. */
+  unitToken: string;
+  /**
+   * Set once rows saved before unfinished rows could sync have been queued: such
+   * rows, and deletions of them, used to stay on the device.
+   */
+  unsyncedRowsQueued: boolean;
 }
 
 export type MetaKey = keyof MetaValues;

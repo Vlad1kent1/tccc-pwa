@@ -1,4 +1,5 @@
-import { formatHlc, initialHlc, newId, tickHlc } from "@tccc/shared";
+import { compareHlc, formatHlc, initialHlc, newId, receiveHlc, tickHlc } from "@tccc/shared";
+import { setServerClockOffset } from "../network-clock";
 import type { TcccDB } from "./schema";
 import type { MetaEntry, MetaKey, MetaValues } from "./types";
 
@@ -32,6 +33,30 @@ export async function setLastPullSeq(db: TcccDB, seq: string): Promise<void> {
 
 export async function getServerClockOffset(db: TcccDB): Promise<number> {
   return (await getMeta(db, "serverClockOffsetMs")) ?? 0;
+}
+
+/** Loads the persisted server offset into `getNetworkAdjustedTime`. Call once at startup. */
+export async function loadServerClockOffset(db: TcccDB): Promise<void> {
+  setServerClockOffset(await getServerClockOffset(db));
+}
+
+/** Measures and persists the server offset from a response's `serverTime`. */
+export async function rememberServerClock(db: TcccDB, serverMs: number, deviceMs = Date.now()): Promise<void> {
+  const offset = serverMs - deviceMs;
+  setServerClockOffset(offset);
+  await setMeta(db, "serverClockOffsetMs", offset);
+}
+
+/**
+ * Advances the device HLC past a clock it has seen, so any edit made after
+ * seeing a value is newer than that value even when another device's clock runs
+ * ahead. Must run inside a transaction that includes `db.meta`.
+ */
+export async function observeClock(db: TcccDB, clock: string, physicalNow: number): Promise<void> {
+  const deviceId = await getDeviceId(db);
+  const state = (await getMeta(db, "hlcState")) ?? initialHlc(deviceId);
+  const next = receiveHlc(state, clock, physicalNow);
+  if (compareHlc(formatHlc(next), formatHlc(state)) > 0) await setMeta(db, "hlcState", next);
 }
 
 export async function getResponderProfile(db: TcccDB): Promise<MetaValues["responderProfile"] | undefined> {

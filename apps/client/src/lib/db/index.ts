@@ -4,3 +4,4 @@ export type { IndexFlag } from "./schema";
 export * from "./meta";
 export * from "./persistence";
 export * from "./casualtyRepo";
+export { finishLegacyExtrasMigration } from "./legacy-extras";

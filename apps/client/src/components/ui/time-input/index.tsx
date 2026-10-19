@@ -2,6 +2,7 @@
 
 import { useT } from "@/i18n/use-t";
 import { isoToLocalInput, localInputToIso } from "@/lib/forms/time";
+import { networkNowIso } from "@/lib/network-clock";
 import { fieldClass } from "@/components/ui/field";
 
 export function TimeInput({
@@ -29,7 +30,7 @@ export function TimeInput({
         />
         <button
           type="button"
-          onClick={() => onChange(new Date().toISOString())}
+          onClick={() => onChange(networkNowIso())}
           className="btn btn-primary shrink-0"
         >
           {t("wizard.now")}
