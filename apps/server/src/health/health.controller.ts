@@ -1,8 +1,11 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Public } from '../common/unit-token.guard.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
+/** Public: the connectivity probe runs before a unit token is entered and returns no casualty data. */
 @ApiTags('health')
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}

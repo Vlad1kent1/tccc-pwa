@@ -9,6 +9,9 @@ import { PrismaService } from '../src/prisma/prisma.service.js';
 
 process.env.DATABASE_URL = 'postgresql://postgres:password@localhost:5434/tccc_medical_db';
 process.env.CORS_ORIGIN = 'http://localhost:3000';
+process.env.API_UNIT_TOKEN = 'unstable-e2e-unit-token-0001';
+
+const AUTH = `Bearer ${process.env.API_UNIT_TOKEN}`;
 
 const DEVICE_A = '0192f300-0000-7000-8000-0000000000a1';
 const DEVICE_B = '0192f300-0000-7000-8000-0000000000b1';
@@ -40,6 +43,7 @@ async function expectDropped(call: Supertest): Promise<void> {
 describe('API under unstable network', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  const authed = () => request.agent(app.getHttpServer()).set('Authorization', AUTH);
 
   beforeAll(async () => {
     chaosState.enabled = true;
@@ -67,7 +71,7 @@ describe('API under unstable network', () => {
   });
 
   async function createCard(lastName: string): Promise<CasualtyCard> {
-    const response = await request(app.getHttpServer())
+    const response = await authed()
       .post('/api/casualties')
       .send(cardBody(newId(), { lastName, evacPriority: 'ROUTINE' }))
       .expect(201);
@@ -75,7 +79,7 @@ describe('API under unstable network', () => {
   }
 
   async function load(id: string): Promise<CasualtyCard> {
-    const response = await request(app.getHttpServer()).get(`/api/casualties/${id}`).expect(200);
+    const response = await authed().get(`/api/casualties/${id}`).expect(200);
     return response.body as CasualtyCard;
   }
 
@@ -85,7 +89,7 @@ describe('API under unstable network', () => {
     const clock = hlc(1_790_000_100_000);
 
     const injuryId = newId();
-    const createdInjury = await request(app.getHttpServer())
+    const createdInjury = await authed()
       .post(`/api/casualties/${card.id}/injury-sites`)
       .set('If-Match', String(version))
       .send({
@@ -100,7 +104,7 @@ describe('API under unstable network', () => {
       .expect(201);
     version = createdInjury.body.version;
 
-    const patchedInjury = await request(app.getHttpServer())
+    const patchedInjury = await authed()
       .patch(`/api/casualties/${card.id}/injury-sites/${injuryId}`)
       .set('If-Match', String(version))
       .send({ description: 'shrapnel', clientUpdatedAt: hlc(1_790_000_100_100) })
@@ -109,14 +113,14 @@ describe('API under unstable network', () => {
     expect(patchedInjury.body.injurySites[0].description).toBe('shrapnel');
     expect(patchedInjury.body.changeSeq).not.toBe(card.changeSeq);
 
-    await request(app.getHttpServer())
+    await authed()
       .patch(`/api/casualties/${card.id}/injury-sites/${injuryId}`)
       .set('If-Match', '1')
       .send({ description: 'stale', clientUpdatedAt: hlc(1_790_000_100_200) })
       .expect(412);
 
     const fluidId = newId();
-    const createdFluid = await request(app.getHttpServer())
+    const createdFluid = await authed()
       .post(`/api/casualties/${card.id}/fluids`)
       .set('If-Match', String(version))
       .send({
@@ -131,7 +135,7 @@ describe('API under unstable network', () => {
       .expect(201);
     version = createdFluid.body.version;
 
-    const patchedFluid = await request(app.getHttpServer())
+    const patchedFluid = await authed()
       .patch(`/api/casualties/${card.id}/fluids/${fluidId}`)
       .set('If-Match', String(version))
       .send({ volumeMl: 250, clientUpdatedAt: hlc(1_790_000_100_400) })
@@ -140,7 +144,7 @@ describe('API under unstable network', () => {
     expect(patchedFluid.body.fluids[0].volumeMl).toBe(250);
 
     const medicationId = newId();
-    const createdMedication = await request(app.getHttpServer())
+    const createdMedication = await authed()
       .post(`/api/casualties/${card.id}/medications`)
       .set('If-Match', String(version))
       .send({
@@ -155,7 +159,7 @@ describe('API under unstable network', () => {
       .expect(201);
     version = createdMedication.body.version;
 
-    const patchedMedication = await request(app.getHttpServer())
+    const patchedMedication = await authed()
       .patch(`/api/casualties/${card.id}/medications/${medicationId}`)
       .set('If-Match', String(version))
       .send({ dose: '30 mg', clientUpdatedAt: hlc(1_790_000_100_600) })
@@ -172,7 +176,7 @@ describe('API under unstable network', () => {
   it('does not apply a child PATCH that chaos rejects with 503', async () => {
     const card = await createCard('Failure');
     const injuryId = newId();
-    const created = await request(app.getHttpServer())
+    const created = await authed()
       .post(`/api/casualties/${card.id}/injury-sites`)
       .set('If-Match', String(card.version))
       .send({
@@ -187,7 +191,7 @@ describe('API under unstable network', () => {
       .expect(201);
 
     updateChaos({ failureRate: 1 });
-    await request(app.getHttpServer())
+    await authed()
       .patch(`/api/casualties/${card.id}/injury-sites/${injuryId}`)
       .set('If-Match', String(created.body.version))
       .send({ description: 'should-not-stick', clientUpdatedAt: hlc(1_790_000_110_100) })
@@ -198,7 +202,7 @@ describe('API under unstable network', () => {
     expect(during.version).toBe(created.body.version);
 
     updateChaos({ failureRate: 0 });
-    const retried = await request(app.getHttpServer())
+    const retried = await authed()
       .patch(`/api/casualties/${card.id}/injury-sites/${injuryId}`)
       .set('If-Match', String(created.body.version))
       .send({ description: 'retried', clientUpdatedAt: hlc(1_790_000_110_100) })
@@ -259,7 +263,7 @@ describe('API under unstable network', () => {
 
     let version = card.version;
     for (const item of cases) {
-      const created = await request(app.getHttpServer())
+      const created = await authed()
         .post(`/api/casualties/${card.id}/${item.createPath}`)
         .set('If-Match', String(version))
         .send({ id: item.itemId, ...item.createBody })
@@ -269,7 +273,7 @@ describe('API under unstable network', () => {
 
       updateChaos({ dropRate: 1 });
       await expectDropped(
-        request(app.getHttpServer())
+        authed()
           .patch(`/api/casualties/${card.id}/${item.createPath}/${item.itemId}`)
           .set('If-Match', String(seen))
           .send(item.patch),
@@ -281,7 +285,7 @@ describe('API under unstable network', () => {
       version = committed.version;
 
       updateChaos({ dropRate: 0 });
-      await request(app.getHttpServer())
+      await authed()
         .patch(`/api/casualties/${card.id}/${item.createPath}/${item.itemId}`)
         .set('If-Match', String(seen))
         .send(item.patch)
@@ -296,7 +300,7 @@ describe('API under unstable network', () => {
   it('still applies a child PATCH when chaos adds latency', async () => {
     const card = await createCard('Latency');
     const vitalId = newId();
-    const created = await request(app.getHttpServer())
+    const created = await authed()
       .post(`/api/casualties/${card.id}/vitals`)
       .set('If-Match', String(card.version))
       .send({
@@ -315,7 +319,7 @@ describe('API under unstable network', () => {
       .expect(201);
 
     updateChaos({ latencyMs: 250 });
-    const patched = await request(app.getHttpServer())
+    const patched = await authed()
       .patch(`/api/casualties/${card.id}/vitals/${vitalId}`)
       .set('If-Match', String(created.body.version))
       .send({ pulseRate: 110, clientUpdatedAt: hlc(1_790_000_130_100) })
@@ -326,7 +330,7 @@ describe('API under unstable network', () => {
 
   it('applies each child sync mutation once when the response is dropped', async () => {
     const cardId = newId();
-    const created = await request(app.getHttpServer())
+    const created = await authed()
       .post('/api/sync/push')
       .send({
         deviceId: DEVICE_A,
@@ -442,11 +446,11 @@ describe('API under unstable network', () => {
         row: item.row,
       };
       updateChaos({ dropRate: 1 });
-      await expectDropped(request(app.getHttpServer()).post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [mutation] }));
+      await expectDropped(authed().post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [mutation] }));
       expect(await childCount(item.entity, cardId)).toBe(1);
 
       updateChaos({ dropRate: 0 });
-      const replay = await request(app.getHttpServer())
+      const replay = await authed()
         .post('/api/sync/push')
         .send({ deviceId: DEVICE_A, mutations: [mutation] })
         .expect(201);
@@ -475,11 +479,11 @@ describe('API under unstable network', () => {
       hlc: hlc(1_790_000_150_000),
     };
     updateChaos({ dropRate: 1 });
-    await expectDropped(request(app.getHttpServer()).post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [deletion] }));
+    await expectDropped(authed().post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [deletion] }));
     expect(await prisma.vitalSigns.count({ where: { cardId, deletedAt: { not: null } } })).toBe(1);
 
     updateChaos({ dropRate: 0 });
-    const replayDelete = await request(app.getHttpServer())
+    const replayDelete = await authed()
       .post('/api/sync/push')
       .send({ deviceId: DEVICE_A, mutations: [deletion] })
       .expect(201);
@@ -491,7 +495,7 @@ describe('API under unstable network', () => {
   it('retries a rejected child upsert without duplicating the row', async () => {
     const cardId = newId();
     const vitalId = newId();
-    await request(app.getHttpServer())
+    await authed()
       .post('/api/sync/push')
       .send({
         deviceId: DEVICE_A,
@@ -534,18 +538,18 @@ describe('API under unstable network', () => {
     };
 
     updateChaos({ failureRate: 1 });
-    await request(app.getHttpServer()).post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [mutation] }).expect(503);
+    await authed().post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [mutation] }).expect(503);
     expect(await prisma.vitalSigns.count({ where: { cardId } })).toBe(0);
 
     updateChaos({ failureRate: 0 });
-    const applied = await request(app.getHttpServer())
+    const applied = await authed()
       .post('/api/sync/push')
       .send({ deviceId: DEVICE_A, mutations: [mutation] })
       .expect(201);
     expect(applied.body.results[0].status).toBe('applied');
     expect(applied.body.results[0].card.vitalSigns).toEqual([expect.objectContaining({ id: vitalId, pulseRate: 90 })]);
 
-    const again = await request(app.getHttpServer())
+    const again = await authed()
       .post('/api/sync/push')
       .send({ deviceId: DEVICE_A, mutations: [mutation] })
       .expect(201);
@@ -557,7 +561,7 @@ describe('API under unstable network', () => {
     const cardId = newId();
     const vitalId = newId();
     const firstClock = hlc(1_790_000_170_000, DEVICE_A);
-    await request(app.getHttpServer())
+    await authed()
       .post('/api/sync/push')
       .send({
         deviceId: DEVICE_A,
@@ -600,7 +604,7 @@ describe('API under unstable network', () => {
 
     const winnerClock = hlc(1_790_000_171_000, DEVICE_B);
     updateChaos({ latencyMs: 200 });
-    const merged = await request(app.getHttpServer())
+    const merged = await authed()
       .post('/api/sync/push')
       .send({
         deviceId: DEVICE_B,

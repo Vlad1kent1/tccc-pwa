@@ -8,7 +8,9 @@ import { PrismaService } from '../src/prisma/prisma.service.js';
 
 process.env.DATABASE_URL = 'postgresql://postgres:password@localhost:5434/tccc_medical_db';
 process.env.CORS_ORIGIN = 'http://localhost:3000';
+process.env.API_UNIT_TOKEN = 'api-e2e-unit-token-0001';
 
+const AUTH = `Bearer ${process.env.API_UNIT_TOKEN}`;
 const DEVICE = '0192f200-0000-7000-8000-0000000000d1';
 
 function hlc(wall: number): string {
@@ -22,6 +24,7 @@ function cardBody(id: string, extra: Record<string, unknown> = {}) {
 describe('casualties API', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  const authed = () => request.agent(app.getHttpServer()).set('Authorization', AUTH);
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -39,27 +42,41 @@ describe('casualties API', () => {
   });
 
   it('reports health with a database check and server time', async () => {
-    const response = await request(app.getHttpServer()).get('/api/health').expect(200);
+    const response = await authed().get('/api/health').expect(200);
     expect(response.body).toMatchObject({ status: 'ok', db: 'ok' });
     expect(typeof response.body.serverTime).toBe('string');
     expect(Number.isNaN(Date.parse(response.body.serverTime))).toBe(false);
   });
 
+  it('keeps health public and refuses casualty and sync routes without the unit token', async () => {
+    await request(app.getHttpServer()).get('/api/health').expect(200);
+    for (const authorization of [undefined, 'Bearer wrong-token-0000000000', process.env.API_UNIT_TOKEN!]) {
+      const pull = request(app.getHttpServer()).get('/api/sync/pull').query({ since: '0' });
+      const list = request(app.getHttpServer()).get('/api/casualties');
+      const push = request(app.getHttpServer()).post('/api/sync/push').send({ deviceId: DEVICE, mutations: [] });
+      for (const call of [pull, list, push]) {
+        const response = await (authorization ? call.set('Authorization', authorization) : call).expect(401);
+        expect(response.headers['www-authenticate']).toBe('Bearer realm="tccc"');
+      }
+    }
+    await authed().get('/api/sync/pull').query({ since: '0', limit: 1 }).expect(200);
+  });
+
   it('registers a device and refreshes last-seen without clearing a stored label', async () => {
-    const first = await request(app.getHttpServer())
+    const first = await authed()
       .post('/api/devices/register')
       .send({ deviceId: DEVICE, label: 'Medic 1' })
       .expect(201);
     expect(first.body).toMatchObject({ deviceId: DEVICE, label: 'Medic 1' });
 
-    const again = await request(app.getHttpServer()).post('/api/devices/register').send({ deviceId: DEVICE }).expect(201);
+    const again = await authed().post('/api/devices/register').send({ deviceId: DEVICE }).expect(201);
     expect(again.body.label).toBe('Medic 1');
     expect(Date.parse(again.body.lastSeenAt)).toBeGreaterThanOrEqual(Date.parse(first.body.lastSeenAt));
   });
 
   it('creates, updates, and soft-deletes a card with child rows and version checks', async () => {
     const id = newId();
-    const created = await request(app.getHttpServer())
+    const created = await authed()
       .post('/api/casualties')
       .send(cardBody(id, { lastName: 'Shevchenko', evacPriority: 'ROUTINE' }))
       .expect(201);
@@ -68,25 +85,25 @@ describe('casualties API', () => {
     expect(card.lastName).toBe('Shevchenko');
     expect(card.changeSeq).toMatch(/^\d+$/);
 
-    const replay = await request(app.getHttpServer())
+    const replay = await authed()
       .post('/api/casualties')
       .send(cardBody(id, { lastName: 'Shevchenko', evacPriority: 'ROUTINE' }))
       .expect(201);
     expect(replay.body.version).toBe(1);
     expect(replay.body.changeSeq).toBe(card.changeSeq);
 
-    await request(app.getHttpServer())
+    await authed()
       .post('/api/casualties')
       .send(cardBody(id, { lastName: 'Other' }))
       .expect(409);
 
-    const loaded = await request(app.getHttpServer()).get(`/api/casualties/${id}`).expect(200);
+    const loaded = await authed().get(`/api/casualties/${id}`).expect(200);
     expect(loaded.body.id).toBe(id);
 
-    const listed = await request(app.getHttpServer()).get('/api/casualties').query({ search: 'Shevchenko', priority: 'ROUTINE' }).expect(200);
+    const listed = await authed().get('/api/casualties').query({ search: 'Shevchenko', priority: 'ROUTINE' }).expect(200);
     expect(listed.body.items.some((item: { id: string }) => item.id === id)).toBe(true);
 
-    const patched = await request(app.getHttpServer())
+    const patched = await authed()
       .patch(`/api/casualties/${id}`)
       .set('If-Match', '1')
       .send({ notes: 'Tourniquet on the right arm' })
@@ -95,12 +112,12 @@ describe('casualties API', () => {
     expect(patched.body.version).toBe(2);
     expect(patched.body.changeSeq).not.toBe(card.changeSeq);
 
-    await request(app.getHttpServer()).patch(`/api/casualties/${id}`).set('If-Match', '1').send({ notes: 'stale' }).expect(412);
-    await request(app.getHttpServer()).patch(`/api/casualties/${id}`).send({ notes: 'missing' }).expect(428);
+    await authed().patch(`/api/casualties/${id}`).set('If-Match', '1').send({ notes: 'stale' }).expect(412);
+    await authed().patch(`/api/casualties/${id}`).send({ notes: 'missing' }).expect(428);
 
     let version = 2;
     const appliedAt = '2026-09-27T08:00:00.000Z';
-    const withTourniquet = await request(app.getHttpServer())
+    const withTourniquet = await authed()
       .put(`/api/casualties/${id}/tourniquets/RIGHT_ARM`)
       .set('If-Match', String(version))
       .send({ type: 'CAT', appliedAt, clientUpdatedAt: hlc(version) })
@@ -111,7 +128,7 @@ describe('casualties API', () => {
     ]);
 
     const injuryId = newId();
-    const withInjury = await request(app.getHttpServer())
+    const withInjury = await authed()
       .post(`/api/casualties/${id}/injury-sites`)
       .set('If-Match', String(version))
       .send({
@@ -128,7 +145,7 @@ describe('casualties API', () => {
     expect(withInjury.body.injurySites).toHaveLength(1);
 
     const vitalId = newId();
-    const withVitals = await request(app.getHttpServer())
+    const withVitals = await authed()
       .post(`/api/casualties/${id}/vitals`)
       .set('If-Match', String(version))
       .send({
@@ -147,7 +164,7 @@ describe('casualties API', () => {
       .expect(201);
     version = withVitals.body.version;
 
-    const editedVitals = await request(app.getHttpServer())
+    const editedVitals = await authed()
       .patch(`/api/casualties/${id}/vitals/${vitalId}`)
       .set('If-Match', String(version))
       .send({ pulseRate: 99, clientUpdatedAt: hlc(version) })
@@ -156,7 +173,7 @@ describe('casualties API', () => {
     expect(editedVitals.body.vitalSigns[0].pulseRate).toBe(99);
 
     const fluidId = newId();
-    const withFluid = await request(app.getHttpServer())
+    const withFluid = await authed()
       .post(`/api/casualties/${id}/fluids`)
       .set('If-Match', String(version))
       .send({
@@ -172,7 +189,7 @@ describe('casualties API', () => {
     version = withFluid.body.version;
 
     const medicationId = newId();
-    const withMedication = await request(app.getHttpServer())
+    const withMedication = await authed()
       .post(`/api/casualties/${id}/medications`)
       .set('If-Match', String(version))
       .send({
@@ -188,34 +205,34 @@ describe('casualties API', () => {
     version = withMedication.body.version;
     expect(withMedication.body.medications[0].name).toBe('Ketamine');
 
-    const tombstonedVitals = await request(app.getHttpServer())
+    const tombstonedVitals = await authed()
       .delete(`/api/casualties/${id}/vitals/${vitalId}`)
       .set('If-Match', String(version))
       .expect(200);
     version = tombstonedVitals.body.version;
     expect(tombstonedVitals.body.vitalSigns[0].deletedAt).toEqual(expect.any(String));
 
-    const tombstonedTourniquet = await request(app.getHttpServer())
+    const tombstonedTourniquet = await authed()
       .delete(`/api/casualties/${id}/tourniquets/RIGHT_ARM`)
       .set('If-Match', String(version))
       .expect(200);
     version = tombstonedTourniquet.body.version;
     expect(tombstonedTourniquet.body.tourniquets[0].deletedAt).toEqual(expect.any(String));
 
-    await request(app.getHttpServer()).delete(`/api/casualties/${id}/injury-sites/${injuryId}`).set('If-Match', String(version)).expect(200);
+    await authed().delete(`/api/casualties/${id}/injury-sites/${injuryId}`).set('If-Match', String(version)).expect(200);
     version += 1;
-    await request(app.getHttpServer()).delete(`/api/casualties/${id}/fluids/${fluidId}`).set('If-Match', String(version)).expect(200);
+    await authed().delete(`/api/casualties/${id}/fluids/${fluidId}`).set('If-Match', String(version)).expect(200);
     version += 1;
-    await request(app.getHttpServer()).delete(`/api/casualties/${id}/medications/${medicationId}`).set('If-Match', String(version)).expect(200);
+    await authed().delete(`/api/casualties/${id}/medications/${medicationId}`).set('If-Match', String(version)).expect(200);
     version += 1;
 
-    const removed = await request(app.getHttpServer()).delete(`/api/casualties/${id}`).set('If-Match', String(version)).expect(200);
+    const removed = await authed().delete(`/api/casualties/${id}`).set('If-Match', String(version)).expect(200);
     expect(removed.body.deletedAt).toEqual(expect.any(String));
     expect(removed.body.version).toBe(version + 1);
 
-    const hidden = await request(app.getHttpServer()).get('/api/casualties').query({ search: 'Shevchenko' }).expect(200);
+    const hidden = await authed().get('/api/casualties').query({ search: 'Shevchenko' }).expect(200);
     expect(hidden.body.items.some((item: { id: string }) => item.id === id)).toBe(false);
-    const visible = await request(app.getHttpServer())
+    const visible = await authed()
       .get('/api/casualties')
       .query({ search: 'Shevchenko', includeDeleted: 'true' })
       .expect(200);
@@ -223,7 +240,7 @@ describe('casualties API', () => {
   });
 
   it('lists every casualties, device, and health route in Swagger', async () => {
-    const response = await request(app.getHttpServer()).get('/api/docs-json').expect(200);
+    const response = await authed().get('/api/docs-json').expect(200);
     const paths = Object.keys(response.body.paths as Record<string, unknown>);
     for (const path of [
       '/api/health',

@@ -3,6 +3,18 @@ import { PROFILES, type NetworkProfile } from "./profiles";
 
 export const API_ORIGIN = "http://127.0.0.1:4100";
 const CLIENT_ORIGIN = "http://127.0.0.1:3100";
+/** Must match API_UNIT_TOKEN in playwright.config.ts. */
+export const E2E_UNIT_TOKEN = "e2e-unit-token-0000000000000001";
+/** For direct API calls from the test runner. */
+export const API_HEADERS = { Authorization: `Bearer ${E2E_UNIT_TOKEN}` };
+
+/** Every page starts with the unit token saved, as if the medic had entered it in Settings. */
+async function withUnitToken(context: BrowserContext): Promise<BrowserContext> {
+  await context.addInitScript((token) => {
+    window.localStorage.setItem("tccc.unitToken", token);
+  }, E2E_UNIT_TOKEN);
+  return context;
+}
 
 export interface ChaosPatch {
   latencyMs?: number;
@@ -56,6 +68,9 @@ export const test = base.extend<{
   serverCounts: (lastNamePrefix?: string) => Promise<ServerCounts>;
   setChaos: (patch: ChaosPatch) => Promise<void>;
 }>({
+  context: async ({ context }, use) => {
+    await use(await withUnitToken(context));
+  },
   setOffline: async ({ context }, use) => {
     await use((value) => context.setOffline(value));
   },
@@ -87,8 +102,8 @@ export const test = base.extend<{
   twoDevices: async ({ browser }, use) => {
     const opened: BrowserContext[] = [];
     await use(async () => {
-      const first = await browser.newContext({ baseURL: CLIENT_ORIGIN });
-      const second = await browser.newContext({ baseURL: CLIENT_ORIGIN });
+      const first = await withUnitToken(await browser.newContext({ baseURL: CLIENT_ORIGIN }));
+      const second = await withUnitToken(await browser.newContext({ baseURL: CLIENT_ORIGIN }));
       opened.push(first, second);
       const a = await first.newPage();
       const b = await second.newPage();
@@ -97,7 +112,7 @@ export const test = base.extend<{
     await Promise.all(opened.map((context) => context.close()));
   },
   serverCounts: async ({ playwright }, use) => {
-    const api = await playwright.request.newContext({ baseURL: API_ORIGIN });
+    const api = await playwright.request.newContext({ baseURL: API_ORIGIN, extraHTTPHeaders: API_HEADERS });
     await use(async (lastNamePrefix) => {
       const cards = await pullAll(api);
       const conflictsResponse = await api.get("/api/sync/conflicts");
@@ -113,7 +128,7 @@ export const test = base.extend<{
     await api.dispose();
   },
   setChaos: async ({ playwright }, use) => {
-    const api = await playwright.request.newContext({ baseURL: API_ORIGIN });
+    const api = await playwright.request.newContext({ baseURL: API_ORIGIN, extraHTTPHeaders: API_HEADERS });
     await use(async (patch) => {
       const response = await api.post("/api/chaos", { data: patch });
       if (!response.ok()) {
