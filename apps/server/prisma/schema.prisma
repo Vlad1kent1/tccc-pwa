@@ -138,6 +138,9 @@ model CasualtyCard {
   battleRosterNumber String?
   evacPriority       EvacPriority?
   allergies          String?
+  casualtyLast4      String?                @db.Char(4) // casualty "Last 4", not the responder's
+  service            String?
+  unit               String?
 
   // Section B - Details of injury
   mechanisms         MechanismOfInjury[]
@@ -155,6 +158,20 @@ model CasualtyCard {
   otherTreatments    OtherTreatment[]
   fluids             FluidAdministration[]
 
+  // Section E - paper-card details the enum arrays above collapse
+  tqExtremity             Boolean @default(false)
+  tqJunctional            Boolean @default(false)
+  tqTruncal               Boolean @default(false)
+  dressingOtherType       String? // "Dressing - Other", specify
+  circulationTqType       String? // "Type" column, C: TQ row
+  circulationDressingType String? // "Type" column, C: Dressing row
+  airwayType              String? // "Type" column, A row
+  breathingType           String? // "Type" column, B row
+  combatPillPack          Boolean @default(false)
+  eyeShieldRight          Boolean @default(false)
+  eyeShieldLeft           Boolean @default(false)
+  hypothermiaType         String?
+
   // Section F - Medications
   medications        Medication[]
 
@@ -164,6 +181,9 @@ model CasualtyCard {
   // Section H - Responder details
   responderName      String?
   responderLast4     String?                @db.Char(4)
+
+  // Unfinished vitals/fluid/medication cell text: { rowId: { column: text } }
+  rowDrafts          Json                   @default("{}")
 
   // Sync metadata
   fieldClock         Json                   @default("{}") // { fieldName: HLC }
@@ -191,7 +211,8 @@ model InjurySite {
   view            BodyView
   x               Float? // 0..1 relative position on the body diagram
   y               Float?
-  description     String?
+  siteCode        String? // printed DD1380 target (e.g. "Ant_Right_Shoulder"); null for a free X on the figure
+  description     String? // free text only
   clientUpdatedAt String // HLC
   deletedAt       DateTime?    @db.Timestamptz(3)
 
@@ -235,10 +256,11 @@ model FluidAdministration {
   cardId          String       @db.Uuid
   card            CasualtyCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
   kind            FluidKind
-  name            String // e.g. "Whole blood", "Plasma"
-  volumeMl        Int
-  route           Route
-  administeredAt  DateTime     @db.Timestamptz(3)
+  name            String // e.g. "Whole blood", "Plasma"; "" while unfinished
+  // Null while the medic has not filled the column in; the paper card allows partial rows.
+  volumeMl        Int?
+  route           Route?
+  administeredAt  DateTime?    @db.Timestamptz(3)
   clientUpdatedAt String
   deletedAt       DateTime?    @db.Timestamptz(3)
 
@@ -250,10 +272,11 @@ model Medication {
   cardId          String             @db.Uuid
   card            CasualtyCard       @relation(fields: [cardId], references: [id], onDelete: Cascade)
   category        MedicationCategory
-  name            String // e.g. "Ketamine", "Moxifloxacin"
-  dose            String // free text with units, e.g. "50 mg"
-  route           Route
-  administeredAt  DateTime           @db.Timestamptz(3)
+  name            String // e.g. "Ketamine", "Moxifloxacin"; "" while unfinished
+  dose            String // free text with units, e.g. "50 mg"; "" while unfinished
+  // Null while the medic has not filled the column in; the paper card allows partial rows.
+  route           Route?
+  administeredAt  DateTime?          @db.Timestamptz(3)
   clientUpdatedAt String
   deletedAt       DateTime?          @db.Timestamptz(3)
 

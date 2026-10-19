@@ -1,16 +1,18 @@
 import {
   cardFieldsSchema,
   cardPatchSchema,
-  fluidSchema,
+  completeFluidSchema,
+  completeMedicationSchema,
+  completeVitalSignsSchema,
   injurySiteSchema,
   isoDateTimeSchema,
-  medicationSchema,
   tourniquetSchema,
   uuidSchema,
-  vitalSignsSchema,
   EvacPriority,
 } from '@tccc/shared';
 import { z } from 'zod';
+
+// The REST API creates finished rows only. Unfinished paper rows arrive through sync.
 
 export const createCasualtySchema = cardFieldsSchema
   .extend({
@@ -67,7 +69,7 @@ export class UpsertTourniquetDto {
   static schema = upsertTourniquetSchema;
 }
 
-const { id: vitalId, cardId: _vitalCardId, deletedAt: _vitalDeletedAt, ...vitalMeasurementShape } = vitalSignsSchema.shape;
+const { id: vitalId, cardId: _vitalCardId, deletedAt: _vitalDeletedAt, ...vitalMeasurementShape } = completeVitalSignsSchema.shape;
 
 const VITAL_MEASUREMENTS = [
   "pulseRate",
@@ -112,13 +114,13 @@ export class PatchVitalSignsDto {
   static schema = patchVitalSignsSchema;
 }
 
-export const createFluidSchema = fluidSchema.omit({ cardId: true, deletedAt: true }).strict();
+export const createFluidSchema = completeFluidSchema.omit({ cardId: true, deletedAt: true }).strict();
 export type CreateFluid = z.infer<typeof createFluidSchema>;
 export class CreateFluidDto {
   static schema = createFluidSchema;
 }
 
-export const patchFluidSchema = fluidSchema
+export const patchFluidSchema = completeFluidSchema
   .omit({ id: true, cardId: true, deletedAt: true })
   .partial()
   .required({ clientUpdatedAt: true })
@@ -128,13 +130,13 @@ export class PatchFluidDto {
   static schema = patchFluidSchema;
 }
 
-export const createMedicationSchema = medicationSchema.omit({ cardId: true, deletedAt: true }).strict();
+export const createMedicationSchema = completeMedicationSchema.omit({ cardId: true, deletedAt: true }).strict();
 export type CreateMedication = z.infer<typeof createMedicationSchema>;
 export class CreateMedicationDto {
   static schema = createMedicationSchema;
 }
 
-export const patchMedicationSchema = medicationSchema
+export const patchMedicationSchema = completeMedicationSchema
   .omit({ id: true, cardId: true, deletedAt: true })
   .partial()
   .required({ clientUpdatedAt: true })

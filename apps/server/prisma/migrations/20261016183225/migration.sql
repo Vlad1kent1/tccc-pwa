@@ -1,0 +1,17 @@
+-- AlterTable
+ALTER TABLE "CasualtyCard" ADD COLUMN     "airwayType" TEXT,
+ADD COLUMN     "breathingType" TEXT,
+ADD COLUMN     "casualtyLast4" CHAR(4),
+ADD COLUMN     "circulationDressingType" TEXT,
+ADD COLUMN     "circulationTqType" TEXT,
+ADD COLUMN     "combatPillPack" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "dressingOtherType" TEXT,
+ADD COLUMN     "eyeShieldLeft" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "eyeShieldRight" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "hypothermiaType" TEXT,
+ADD COLUMN     "rowDrafts" JSONB NOT NULL DEFAULT '{}',
+ADD COLUMN     "service" TEXT,
+ADD COLUMN     "tqExtremity" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "tqJunctional" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "tqTruncal" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "unit" TEXT;

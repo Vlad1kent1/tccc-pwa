@@ -1,4 +1,4 @@
-import type { CasualtyCard as CardDto } from '@tccc/shared';
+import type { CasualtyCard as CardDto, RowDrafts } from '@tccc/shared';
 import type { Prisma } from '../generated/prisma/client.js';
 
 export const cardWithChildren = {
@@ -26,6 +26,7 @@ export function toCardDto(card: CardWithChildren): CardDto {
     medications,
     injuredAt,
     fieldClock,
+    rowDrafts,
     changeSeq,
     createdAt,
     serverUpdatedAt,
@@ -49,15 +50,16 @@ export function toCardDto(card: CardWithChildren): CardDto {
     })),
     fluids: fluids.map((r) => ({
       ...r,
-      administeredAt: iso(r.administeredAt),
+      administeredAt: isoOrNull(r.administeredAt),
       deletedAt: isoOrNull(r.deletedAt),
     })),
     medications: medications.map((r) => ({
       ...r,
-      administeredAt: iso(r.administeredAt),
+      administeredAt: isoOrNull(r.administeredAt),
       deletedAt: isoOrNull(r.deletedAt),
     })),
     fieldClock: fieldClock as Record<string, string>,
+    rowDrafts: rowDrafts as RowDrafts,
     changeSeq: changeSeq.toString(),
     createdAt: iso(createdAt),
     serverUpdatedAt: iso(serverUpdatedAt),

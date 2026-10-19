@@ -4,7 +4,13 @@ import { newId, tourniquetId } from "../ids.js";
 import {
   cardPatchSchema,
   casualtyCardSchema,
+  childSchemas,
+  completeFluidSchema,
+  completeMedicationSchema,
+  completeVitalSignsSchema,
   emptyCardFields,
+  fluidSchema,
+  medicationSchema,
   sectionASchema,
   sectionHSchema,
   vitalSignsSchema,
@@ -59,11 +65,42 @@ function card(overrides: Partial<CasualtyCard> = {}): CasualtyCard {
 
 describe("section schemas", () => {
   it("accepts a fully empty section A (clinical fields are never mandatory)", () => {
-    const { lastName, firstName, gender, injuredAt, battleRosterNumber, evacPriority, allergies } = emptyCardFields();
+    const { lastName, firstName, gender, injuredAt, battleRosterNumber, evacPriority, allergies, casualtyLast4, service, unit } =
+      emptyCardFields();
     expect(
-      sectionASchema.safeParse({ lastName, firstName, gender, injuredAt, battleRosterNumber, evacPriority, allergies })
-        .success,
+      sectionASchema.safeParse({
+        lastName,
+        firstName,
+        gender,
+        injuredAt,
+        battleRosterNumber,
+        evacPriority,
+        allergies,
+        casualtyLast4,
+        service,
+        unit,
+      }).success,
     ).toBe(true);
+  });
+
+  it("requires exactly four digits for the casualty last 4", () => {
+    expect(cardPatchSchema.safeParse({ casualtyLast4: "0427" }).success).toBe(true);
+    expect(cardPatchSchema.safeParse({ casualtyLast4: "042" }).success).toBe(false);
+    expect(cardPatchSchema.safeParse({ casualtyLast4: null }).success).toBe(true);
+  });
+
+  it("accepts paper-card treatment details as card fields", () => {
+    const patch = {
+      tqJunctional: true,
+      eyeShieldLeft: true,
+      combatPillPack: true,
+      circulationTqType: "CAT",
+      hypothermiaType: "HPMK",
+      rowDrafts: { [newId()]: { time: "14" } },
+    };
+    expect(cardPatchSchema.safeParse(patch).success).toBe(true);
+    expect(cardPatchSchema.safeParse({ tqExtremity: "yes" }).success).toBe(false);
+    expect(cardPatchSchema.safeParse({ rowDrafts: { row: { time: "x".repeat(201) } } }).success).toBe(false);
   });
 
   it("validates the battle roster number format, including Cyrillic letters", () => {
@@ -106,7 +143,7 @@ describe("vital signs", () => {
     expect(vitalSignsSchema.safeParse(vitals({ [field]: value })).success).toBe(false);
   });
 
-  it("requires at least one measurement", () => {
+  it("syncs a row with only its time, but counts it complete only with a measurement", () => {
     const empty = vitals({
       pulseRate: null,
       pulseLocation: null,
@@ -117,12 +154,48 @@ describe("vital signs", () => {
       avpu: null,
       painScale: null,
     });
-    expect(vitalSignsSchema.safeParse(empty).success).toBe(false);
-    expect(vitalSignsSchema.safeParse({ ...empty, avpu: "PAIN" }).success).toBe(true);
+    expect(vitalSignsSchema.safeParse(empty).success).toBe(true);
+    expect(completeVitalSignsSchema.safeParse(empty).success).toBe(false);
+    expect(completeVitalSignsSchema.safeParse({ ...empty, avpu: "PAIN" }).success).toBe(true);
   });
 
   it("rejects systolic lower than diastolic", () => {
     expect(vitalSignsSchema.safeParse(vitals({ systolic: 70, diastolic: 90 })).success).toBe(false);
+    expect(completeVitalSignsSchema.safeParse(vitals({ systolic: 70, diastolic: 90 })).success).toBe(false);
+  });
+});
+
+describe("injury sites", () => {
+  it("reads a row from a device that does not send siteCode yet as a free mark", () => {
+    const row = { id: newId(), cardId: newId(), clientUpdatedAt: hlc, deletedAt: null, region: "CHEST", view: "FRONT", x: 0.4, y: 0.3, description: null };
+    expect(childSchemas.injurySite.parse(row).siteCode).toBeNull();
+    expect(childSchemas.injurySite.parse({ ...row, siteCode: "Ant_Right_Shoulder" }).siteCode).toBe("Ant_Right_Shoulder");
+  });
+});
+
+describe("unfinished fluid and medication rows", () => {
+  const base = { id: newId(), cardId: newId(), clientUpdatedAt: hlc, deletedAt: null };
+
+  it("syncs a fluid with only a name, and rejects one with nothing filled in", () => {
+    const partial = { ...base, kind: "FLUID", name: "LR", volumeMl: null, route: null, administeredAt: null };
+    expect(fluidSchema.safeParse(partial).success).toBe(true);
+    expect(completeFluidSchema.safeParse(partial).success).toBe(false);
+    expect(fluidSchema.safeParse({ ...partial, name: "  " }).success).toBe(false);
+    expect(completeFluidSchema.safeParse({ ...partial, volumeMl: 500, route: "IV", administeredAt: now }).success).toBe(true);
+  });
+
+  it("syncs a medication with only a dose, and rejects one with nothing filled in", () => {
+    const partial = { ...base, category: "ANALGESIC", name: "", dose: "50 mg", route: null, administeredAt: null };
+    expect(medicationSchema.safeParse(partial).success).toBe(true);
+    expect(completeMedicationSchema.safeParse(partial).success).toBe(false);
+    expect(medicationSchema.safeParse({ ...partial, dose: "" }).success).toBe(false);
+  });
+
+  it("carries an unfinished row in a child upsert", () => {
+    const cardId = newId();
+    const row = { ...base, cardId, kind: "BLOOD_PRODUCT", name: "", volumeMl: 250, route: null, administeredAt: null };
+    const mutation = { op: "child.upsert", entity: "fluid", row, mutationId: newId(), cardId, hlc, baseVersion: null };
+    expect(mutationSchema.safeParse(mutation).success).toBe(true);
   });
 });
 
