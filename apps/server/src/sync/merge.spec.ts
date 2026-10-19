@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { mergeChildRow, mergeField, mergeTombstone, type ChildClockRow } from './merge.js';
+import {
+  mergeCardDelete,
+  mergeCardPatch,
+  mergeChildDelete,
+  mergeChildRow,
+  mergeChildUpsert,
+  mergeField,
+  mergeTombstone,
+  type ChildClockRow,
+} from './merge.js';
 
 const CARD = '0192f000-0000-7000-8000-000000000001';
 const OLD = '1790000000000:0001:device-a';
@@ -47,19 +56,20 @@ describe('mergeField', () => {
     });
   });
 
-  it('treats a missing stored clock as older than the incoming write', () => {
+  it('treats a missing stored clock as older, and replacing that unwritten default is no conflict', () => {
     const result = mergeField({
       entity: 'card',
       entityId: CARD,
-      field: 'notes',
+      field: 'allergies',
       stored: null,
-      incoming: 'TQ on right arm',
+      incoming: 'Penicillin',
       storedClock: null,
       incomingClock: OLD,
     });
 
-    expect(result.value).toBe('TQ on right arm');
-    expect(result.discarded).toMatchObject({ discarded: null, kept: 'TQ on right arm' });
+    expect(result.value).toBe('Penicillin');
+    expect(result.clock).toBe(OLD);
+    expect(result.discarded).toBeNull();
   });
 
   it('does not record a conflict when both sides wrote the same value', () => {
@@ -151,5 +161,113 @@ describe('mergeTombstone', () => {
       discarded: '2026-09-24T12:00:00.000Z',
       incomingLost: true,
     });
+  });
+});
+
+describe('fast path (base version matches)', () => {
+  const ROW = '0192f000-0000-7000-8000-000000000010';
+
+  it('drops an older offline edit instead of overwriting a newer value, and records it', () => {
+    const result = mergeCardPatch({
+      cardId: CARD,
+      stored: { allergies: 'Penicillin', notes: 'old note' },
+      storedClock: { allergies: NEW, notes: OLD },
+      patch: { allergies: 'NKA', notes: 'new note' },
+      changedFields: ['allergies', 'notes'],
+      hlc: '1790000000000:0001:device-c',
+      fastPath: true,
+    });
+
+    expect(result.columns).toEqual({ notes: 'new note' });
+    expect(result.clock).toEqual({ allergies: NEW, notes: '1790000000000:0001:device-c' });
+    expect(result.discarded).toEqual([
+      expect.objectContaining({ field: 'allergies', kept: 'Penicillin', discarded: 'NKA', incomingLost: true }),
+    ]);
+  });
+
+  it('applies a newer edit without recording the value it replaced as a conflict', () => {
+    const result = mergeCardPatch({
+      cardId: CARD,
+      stored: { evacPriority: 'ROUTINE' },
+      storedClock: { evacPriority: OLD },
+      patch: { evacPriority: 'URGENT' },
+      changedFields: ['evacPriority'],
+      hlc: NEW,
+      fastPath: true,
+    });
+
+    expect(result.columns).toEqual({ evacPriority: 'URGENT' });
+    expect(result.discarded).toEqual([]);
+  });
+
+  it('still records the replaced value on the slow path, where the device had not seen it', () => {
+    const result = mergeCardPatch({
+      cardId: CARD,
+      stored: { evacPriority: 'ROUTINE' },
+      storedClock: { evacPriority: OLD },
+      patch: { evacPriority: 'URGENT' },
+      changedFields: ['evacPriority'],
+      hlc: NEW,
+      fastPath: false,
+    });
+
+    expect(result.discarded).toEqual([
+      expect.objectContaining({ kept: 'URGENT', discarded: 'ROUTINE', incomingLost: false }),
+    ]);
+  });
+
+  it('does not delete a card whose restore is newer than the delete', () => {
+    const result = mergeCardDelete({
+      cardId: CARD,
+      storedDeletedAt: null,
+      storedClock: { deletedAt: NEW },
+      deletedAt: '2026-09-24T12:00:00.000Z',
+      hlc: OLD,
+      fastPath: true,
+    });
+
+    expect(result.deletedAt).toBeNull();
+    expect(result.clock.deletedAt).toBe(NEW);
+    expect(result.discarded).toHaveLength(1);
+  });
+
+  it('deletes a card that never had a deletedAt clock without a review conflict', () => {
+    const result = mergeCardDelete({
+      cardId: CARD,
+      storedDeletedAt: null,
+      storedClock: {},
+      deletedAt: '2026-09-24T12:00:00.000Z',
+      hlc: OLD,
+      fastPath: false,
+    });
+
+    expect(result.deletedAt).toBe('2026-09-24T12:00:00.000Z');
+    expect(result.discarded).toEqual([]);
+  });
+
+  it('keeps a newer child row over an older upsert', () => {
+    const stored = { id: ROW, clientUpdatedAt: NEW, deletedAt: null, pulseRate: 120 };
+    const incoming = { id: ROW, clientUpdatedAt: OLD, deletedAt: null, pulseRate: 60 };
+    const result = mergeChildUpsert({ entity: 'vitalSigns', stored, incoming, fastPath: true });
+
+    expect(result.write).toBeNull();
+    expect(result.discarded).toEqual([expect.objectContaining({ field: 'row', incomingLost: true })]);
+  });
+
+  it('writes a newer child row silently on the fast path', () => {
+    const stored = { id: ROW, clientUpdatedAt: OLD, deletedAt: null, pulseRate: 120 };
+    const incoming = { id: ROW, clientUpdatedAt: NEW, deletedAt: null, pulseRate: 60 };
+    const result = mergeChildUpsert({ entity: 'vitalSigns', stored, incoming, fastPath: true });
+
+    expect(result.write).toBe(incoming);
+    expect(result.discarded).toEqual([]);
+  });
+
+  it('ignores an older delete of a row that was edited since', () => {
+    const stored = { id: ROW, clientUpdatedAt: NEW, deletedAt: null };
+    const result = mergeChildDelete({ entity: 'fluid', stored, deletedAt: '2026-09-24T12:00:00.000Z', hlc: OLD, fastPath: true });
+
+    expect(result.write).toBeNull();
+    expect(result.discarded).toEqual([expect.objectContaining({ field: 'deletedAt', incomingLost: true })]);
   });
 });
