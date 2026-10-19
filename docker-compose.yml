@@ -19,9 +19,16 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: tccc_medical_db
     ports:
-      # Dedicated database for server e2e tests. Host 5432 is taken by a native
-      # PostgreSQL service and 5433 by the `db` service above.
+      # Dedicated database for the server and Playwright e2e tests. Host 5432 is
+      # taken by a native PostgreSQL service and 5433 by the `db` service above.
       - "5434:5432"
+    healthcheck:
+      # Over TCP: during first-start init the server listens on the socket only,
+      # so a socket check can pass before the real server is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d tccc_medical_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
 
 volumes:
   pgdata:

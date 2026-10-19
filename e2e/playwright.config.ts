@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { E2E_DATABASE_URL } from "./src/database";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const clientOrigin = "http://127.0.0.1:3100";
@@ -9,6 +10,7 @@ const apiOrigin = "http://127.0.0.1:4100";
 export default defineConfig({
   testDir: "./tests",
   globalSetup: "./src/global-setup.ts",
+  globalTeardown: "./src/global-teardown.ts",
   timeout: 120_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
@@ -44,11 +46,11 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         ...process.env,
-        DATABASE_URL:
-          process.env.E2E_DATABASE_URL ??
-          "postgresql://postgres:password@localhost:5433/tccc_medical_db",
+        DATABASE_URL: E2E_DATABASE_URL,
         PORT: "4100",
         CORS_ORIGIN: clientOrigin,
+        // Same value as E2E_UNIT_TOKEN in src/fixtures.ts.
+        API_UNIT_TOKEN: "e2e-unit-token-0000000000000001",
         CHAOS_ENABLED: "true",
         CHAOS_LATENCY_MS: "0",
         CHAOS_FAILURE_RATE: "0",

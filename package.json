@@ -4,9 +4,11 @@
   "scripts": {
     "dev": "pnpm -r --parallel --filter client --filter server dev",
     "db:up": "docker compose up -d db",
+    "db:test:up": "docker compose up -d --wait db_test",
     "db:migrate": "pnpm --filter server exec prisma migrate dev",
-    "db:seed": "pnpm --filter server exec prisma db seed",
+    "db:seed:mock": "pnpm --filter server db:seed:mock",
+    "db:wipe": "pnpm --filter server db:wipe",
     "test": "pnpm --filter client --filter server --filter @tccc/shared test",
-    "test:e2e": "pnpm --filter e2e test"
+    "test:e2e": "pnpm db:test:up && pnpm --filter e2e test"
   }
 }

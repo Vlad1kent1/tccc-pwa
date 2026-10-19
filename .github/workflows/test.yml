@@ -70,5 +70,6 @@ jobs:
       - run: pnpm --filter server exec prisma generate
       - run: pnpm --filter server exec prisma migrate deploy
       - run: pnpm --filter e2e exec playwright install --with-deps chromium webkit
-      - run: pnpm test:e2e
+      # Not `pnpm test:e2e`: that starts the docker-compose db_test, and CI has its own service.
+      - run: pnpm --filter e2e test
       - run: pnpm --filter e2e report
