@@ -1,6 +1,7 @@
 import type { TcccDB } from "@/lib/db";
-import { syncNow } from "./engine";
+import { resetSyncBackoff, resumeAfterTokenChange, syncNow } from "./engine";
 import { getSyncSnapshot, patchSyncStatus } from "./status-store";
+import { UNIT_TOKEN_STORAGE_KEY } from "./unit-token";
 
 const ONLINE_INTERVAL_MS = 30_000;
 const OFFLINE_INTERVAL_MS = 5 * 60_000;
@@ -51,10 +52,15 @@ export function startSyncTriggers(db: TcccDB): () => void {
     void registerOutboxSync().catch(() => undefined);
     scheduleAfterWrite(db);
   };
+  // A token saved in another tab lifts this tab's pause too.
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === UNIT_TOKEN_STORAGE_KEY) void resumeAfterTokenChange(db);
+  };
 
   window.addEventListener("online", onOnline);
   window.addEventListener("offline", onOffline);
   document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("storage", onStorage);
   navigator.serviceWorker?.addEventListener("message", onSwMessage);
   db.outbox.hook("creating", onOutboxCreate);
   armInterval(db);
@@ -64,10 +70,12 @@ export function startSyncTriggers(db: TcccDB): () => void {
     window.removeEventListener("online", onOnline);
     window.removeEventListener("offline", onOffline);
     document.removeEventListener("visibilitychange", onVisible);
+    window.removeEventListener("storage", onStorage);
     navigator.serviceWorker?.removeEventListener("message", onSwMessage);
     db.outbox.hook("creating").unsubscribe(onOutboxCreate);
     if (writeTimer) clearTimeout(writeTimer);
     if (intervalTimer) clearTimeout(intervalTimer);
+    resetSyncBackoff();
   };
 }
 

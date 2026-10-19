@@ -1,11 +1,12 @@
-export { ApiError, fetchHealth, pullChanges, pushMutations, resolveConflict } from "./api";
+export { ApiError, fetchHealth, isUnauthorized, pullChanges, pushMutations, resolveConflict } from "./api";
+export { parseUnitToken, readUnitToken, saveUnitToken } from "./unit-token";
 export { resolveLocalConflict } from "./conflicts";
 export { backoffDelayMs } from "./backoff";
 export { coalesceOutbox } from "./coalesce";
 export { probeConnectivity } from "./connectivity";
 export { requestSync, startSyncTriggers } from "./triggers";
-export { syncNow } from "./engine";
+export { resumeAfterTokenChange, syncNow } from "./engine";
 export { rebaseCard } from "./rebase";
 export { connectivityMode, useSyncStatus } from "./status-store";
 export type { Connectivity } from "./connectivity";
-export type { SyncErrorPayload, SyncSnapshot } from "./status-store";
+export type { AuthProblem, SyncErrorPayload, SyncSnapshot } from "./status-store";

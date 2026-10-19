@@ -11,6 +11,9 @@ export interface SyncErrorPayload {
   status: number | null;
 }
 
+/** Why sync is paused for the unit token: none entered yet, or the server answered 401. */
+export type AuthProblem = "missing" | "rejected";
+
 export interface SyncSnapshot {
   state: SyncPhase;
   connectivity: Connectivity;
@@ -18,6 +21,8 @@ export interface SyncSnapshot {
   lastSyncAt: number | null;
   lastError: SyncErrorPayload | null;
   conflictCount: number;
+  /** Set while sync is paused until the medic enters or corrects the unit token. */
+  authProblem: AuthProblem | null;
 }
 
 /** Header and status-bar mode. Degraded covers API failures; offline is connectivity only. */
@@ -36,6 +41,7 @@ const serverSnapshot: SyncSnapshot = {
   lastSyncAt: null,
   lastError: null,
   conflictCount: 0,
+  authProblem: null,
 };
 
 let snapshot: SyncSnapshot = serverSnapshot;

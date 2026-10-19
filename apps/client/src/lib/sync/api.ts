@@ -9,6 +9,7 @@ import {
   type ResolveConflictBody,
   type ResolveConflictResponse,
 } from "@tccc/shared";
+import { readUnitToken } from "./unit-token";
 
 const TUNNEL_HEADERS = {
   "ngrok-skip-browser-warning": "true",
@@ -34,6 +35,7 @@ export function apiOrigin(): string {
   return configured.replace(/\/api$/, "");
 }
 
+/** 408, 429, and 5xx, a network failure (`TypeError`), or an aborted or timed-out request (`DOMException`). */
 export function isRetryableError(error: unknown): boolean {
   if (error instanceof ApiError) {
     return error.status === 408 || error.status === 429 || error.status >= 500;
@@ -41,21 +43,49 @@ export function isRetryableError(error: unknown): boolean {
   return error instanceof TypeError || error instanceof DOMException;
 }
 
+export function isUnauthorized(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
+/**
+ * Longest wait for one sync request, body included. A request nobody answers would otherwise
+ * keep the sync lock forever, and every later sync in every tab would wait behind it.
+ */
+export const SYNC_REQUEST_TIMEOUT_MS = 45_000;
+
 async function request(path: string, init: RequestInit = {}): Promise<unknown> {
-  const response = await fetch(`${apiOrigin()}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...init.headers,
-      ...TUNNEL_HEADERS,
-    },
-  });
-  if (!response.ok) {
-    throw new ApiError(response.status, `${init.method ?? "GET"} ${path} failed (${response.status})`);
+  const token = await readUnitToken();
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException(`No response within ${SYNC_REQUEST_TIMEOUT_MS} ms`, "TimeoutError"));
+  }, SYNC_REQUEST_TIMEOUT_MS);
+  const forwardAbort = () => controller.abort(init.signal?.reason);
+  if (init.signal?.aborted) forwardAbort();
+  else init.signal?.addEventListener("abort", forwardAbort, { once: true });
+
+  try {
+    const response = await fetch(`${apiOrigin()}${path}`, {
+      ...init,
+      signal: controller.signal,
+      // Never let the HTTP cache answer a sync call; the worker already bypasses its own.
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...init.headers,
+        ...TUNNEL_HEADERS,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (!response.ok) {
+      throw new ApiError(response.status, `${init.method ?? "GET"} ${path} failed (${response.status})`);
+    }
+    if (response.status === 204) return null;
+    return (await response.json()) as unknown;
+  } finally {
+    clearTimeout(timer);
+    init.signal?.removeEventListener("abort", forwardAbort);
   }
-  if (response.status === 204) return null;
-  return response.json() as Promise<unknown>;
 }
 
 function parse<T>(
