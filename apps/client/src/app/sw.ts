@@ -3,7 +3,9 @@
 import { defaultCache } from "@serwist/turbopack/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { NetworkOnly, Serwist, StaleWhileRevalidate } from "serwist";
+import { apiOrigin } from "../lib/sync/api";
 import { pushOutboxFromWorker } from "../lib/sync/worker-push";
+import { respondNavigation, respondRsc } from "./sw-navigation";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -13,18 +15,57 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope;
 
+/** Origin of the sync API, inlined at build time by the Serwist route. Null when it is not configured. */
+const API_ORIGIN = (() => {
+  try {
+    return new URL(apiOrigin()).origin;
+  } catch {
+    return null;
+  }
+})();
+
+/**
+ * Casualty data must never be stored by the worker, whatever origin the API is on.
+ * A cached pull would also replay an old change feed and break cross-device sync.
+ */
+function isApiRequest(url: URL): boolean {
+  return url.pathname.startsWith("/api/") || (API_ORIGIN !== null && url.origin === API_ORIGIN);
+}
+
+const PAGE_CACHE = "pages";
+const RSC_CACHE = "pages-rsc";
+
+/**
+ * Removed when a new worker takes over. Before the API had its own NetworkOnly
+ * rule, cross-origin pulls were stored in `cross-origin` and same-origin ones in
+ * `apis`. Stored pages and RSC payloads point at the previous build's chunks,
+ * which the new precache no longer holds.
+ */
+const STALE_CACHES = ["apis", "cross-origin", PAGE_CACHE, RSC_CACHE, "pages-rsc-prefetch"];
+
+/** Only a route that is not precached waits on the network, and not past this. */
+const NAVIGATION_TIMEOUT_MS = 12_000;
+/** An in-app navigation waits this long before Next loads the page in full from the precache. */
+const RSC_TIMEOUT_MS = 5_000;
+
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
   skipWaiting: false,
   clientsClaim: true,
-  navigationPreload: true,
+  // Page loads are answered from the precache; a preload request would only spend data and battery.
+  navigationPreload: false,
   runtimeCaching: [
-    // Registered before defaultCache so /api/* is never stored. defaultCache
-    // would otherwise use NetworkFirst for GET /api/.
+    // Registered first so no API request reaches defaultCache, which uses
+    // NetworkFirst for same-origin /api/ and for every cross-origin GET.
     {
-      matcher: ({ sameOrigin, url: { pathname } }) =>
-        sameOrigin && pathname.startsWith("/api/"),
+      matcher: ({ url }) => isApiRequest(url),
       handler: new NetworkOnly(),
+    },
+    // defaultCache would wait on the network with no deadline.
+    {
+      matcher: ({ request, sameOrigin }) => sameOrigin && request.headers.get("RSC") === "1",
+      handler: async ({ request }) =>
+        respondRsc(request, { cache: await caches.open(RSC_CACHE), fetch: (input, init) => fetch(input, init), timeoutMs: RSC_TIMEOUT_MS }),
     },
     {
       matcher: /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,
@@ -48,47 +89,28 @@ const serwist = new Serwist({
   },
 });
 
-const PAGE_CACHE = "pages";
-/** Field 2G needs more than one 3s round trip before the cached shell is used. */
-const NAVIGATION_TIMEOUT_MS = 12_000;
-
-async function asDocument(response: Response): Promise<Response> {
-  if (!response.redirected) return response;
-  const headers = new Headers(response.headers);
-  headers.delete("location");
-  return new Response(await response.blob(), { status: 200, statusText: "OK", headers });
-}
-
-async function respondNavigation(request: Request): Promise<Response> {
-  const cache = await caches.open(PAGE_CACHE);
-  const path = new URL(request.url).pathname;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), NAVIGATION_TIMEOUT_MS);
-  try {
-    const response = await fetch(request, { signal: controller.signal });
-    if (response.ok) {
-      await cache.put(request, response.clone());
-      return response;
-    }
-  } catch {
-    // Offline, timed out, or aborted. Fall through to a stored document.
-  } finally {
-    clearTimeout(timer);
-  }
-  const cached =
-    (await cache.match(request, { ignoreVary: true })) ??
-    (await serwist.matchPrecache(path)) ??
-    (await serwist.matchPrecache("/~offline"));
-  if (cached) return asDocument(cached);
-  return Response.error();
-}
-
-// PrecacheRoute serves precached URLs cache-first. Navigations must try the
-// network, then the page cache (ignoring Vary), then the precached shell.
+// PrecacheRoute alone would miss query-param routes (`/casualties/card?id=…`),
+// and defaultCache would go to the network first. Page loads are answered here.
 self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate") return;
+  if (isApiRequest(new URL(event.request.url))) return;
   event.stopImmediatePropagation();
-  event.respondWith(respondNavigation(event.request));
+  event.respondWith(
+    caches.open(PAGE_CACHE).then((pages) =>
+      respondNavigation(event.request, {
+        matchShell: (path) => serwist.matchPrecache(path),
+        matchOffline: () => serwist.matchPrecache("/~offline"),
+        pages,
+        fetch: (request, init) => fetch(request, init),
+        waitUntil: (promise) => event.waitUntil(promise),
+        timeoutMs: NAVIGATION_TIMEOUT_MS,
+      }),
+    ),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(Promise.all(STALE_CACHES.map((name) => caches.delete(name))));
 });
 
 self.addEventListener("message", (event) => {
