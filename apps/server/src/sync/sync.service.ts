@@ -1,10 +1,15 @@
 import {
   ConflictException,
+  HttpException,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   CARD_FIELDS,
+  MUTATION_ERROR_CODES,
   emptyCardFields,
   formatHlc,
   isNewerHlc,
@@ -12,6 +17,7 @@ import {
   mutationSchema,
   newId,
   parseHlc,
+  syncConflictSchema,
   tickHlc,
   type CardField,
   type CasualtyCard,
@@ -22,14 +28,26 @@ import {
   type PushResponse,
   type SyncConflictInfo,
 } from '@tccc/shared';
+import { formatPayload, logError, payloadLoggingEnabled } from '../common/error-log.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { cardWithChildren, toCardDto, type CardWithChildren } from '../prisma/card-serializer.js';
 import { nextChangeSeq } from '../prisma/change-seq.js';
+import { classifyDbError, dbErrorLines, describeDbError } from '../prisma/prisma-errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { mergeChildRow, mergeField, mergeTombstone, type DiscardedValue } from './merge.js';
+import { mergeCardDelete, mergeCardPatch, mergeChildDelete, mergeChildUpsert, type DiscardedValue } from './merge.js';
 import type { ListConflictsQuery, ResolveConflict } from './sync.schemas.js';
 
 const SERVER_NODE = 'server';
+const NIL_MUTATION_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Interactive transaction limits for one mutation. Prisma's defaults (2 s to start, 5 s in all)
+ * are tight for the ~15 queries a mutation runs behind its card lock on a busy database.
+ */
+const TX_OPTIONS = { maxWait: 5_000, timeout: 15_000 } as const;
+
+/** Tries per mutation when the database fails transiently (deadlock, timeout, lost connection). */
+const MAX_ATTEMPTS = 3;
 
 const CHILD_DELEGATE = {
   injurySite: 'injurySite',
@@ -73,6 +91,8 @@ export interface ConflictRecord {
 
 @Injectable()
 export class SyncService {
+  private readonly logger = new Logger(SyncService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async push(deviceId: string, mutations: unknown[]): Promise<PushResponse> {
@@ -138,25 +158,117 @@ export class SyncService {
       });
       const fresh = body.choice === 'discarded' ? current : await this.loadCard(tx, card.id);
       return { conflict: toConflictRecord(resolved), card: toCardDto(fresh ?? current) };
-    });
+    }, TX_OPTIONS);
   }
 
+  /**
+   * Applies one mutation in its own transaction. A transient database failure is retried and,
+   * if it lasts, fails the request with 503 so the device retries later; the mutations before it
+   * stay committed and replay from `ProcessedMutation`. Any other failure rejects only this
+   * mutation, so one bad mutation never holds up the rest of the outbox.
+   */
   private async pushOne(deviceId: string, raw: unknown): Promise<MutationResult> {
     const claimedId = readMutationId(raw);
-    try {
-      return await this.prisma.$transaction((tx) => this.applyInTransaction(tx, deviceId, raw));
-    } catch (error) {
-      if (!isUniqueViolation(error) || !claimedId) {
-        throw error;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.prisma.$transaction((tx) => this.applyInTransaction(tx, deviceId, raw), TX_OPTIONS);
+      } catch (error) {
+        if (error instanceof HttpException) throw error;
+        // A concurrent request for the same mutation committed first: answer with its result.
+        if (isUniqueViolation(error) && claimedId) {
+          const stored = await this.prisma.processedMutation.findUnique({ where: { mutationId: claimedId } });
+          if (stored) return this.replayStored(this.prisma, stored.result, claimedId, raw);
+        }
+        const kind = classifyDbError(error);
+        // Without a stored result a unique violation gets one more try: a card that a concurrent
+        // mutation created is found then.
+        const retry = kind === 'transient' || (kind === 'unique' && attempt === 1);
+        if (!retry || attempt >= MAX_ATTEMPTS) {
+          return this.failMutation(deviceId, raw, claimedId, error, attempt);
+        }
+        await sleep(retryDelayMs(attempt));
       }
-      const stored = await this.prisma.processedMutation.findUnique({
-        where: { mutationId: claimedId },
-      });
-      if (stored) {
-        return readStoredResult(stored.result);
-      }
-      return this.prisma.$transaction((tx) => this.applyInTransaction(tx, deviceId, raw));
     }
+  }
+
+  /**
+   * Logs a mutation the server could not apply with the exact payload, then rejects it: as
+   * VALIDATION when the database refused the data, as INTERNAL otherwise. A failure that a later
+   * retry may get past fails the whole push with 503 instead.
+   */
+  private failMutation(
+    deviceId: string,
+    raw: unknown,
+    claimedId: string | null,
+    error: unknown,
+    attempts: number,
+  ): MutationResult {
+    const db = describeDbError(error);
+    const mutationId = claimedId ?? NIL_MUTATION_ID;
+    const [headline, ...details] = dbErrorLines(db);
+    logError(
+      this.logger,
+      [
+        `Mutation ${mutationId} from device ${deviceId} failed after ${attempts} attempt(s): ${headline}`,
+        ...details,
+        ...(payloadLoggingEnabled() ? [`mutation: ${formatPayload(raw)}`] : []),
+      ],
+      error,
+    );
+    if (db.kind === 'transient') {
+      throw new ServiceUnavailableException('The database is busy, retry the push');
+    }
+    if (db.kind === 'invalid-data' || db.kind === 'unique') {
+      return rejectedResult(mutationId, 'VALIDATION', `Database refused the mutation: ${db.summary}`, {
+        code: db.code,
+        sqlState: db.sqlState,
+        ...db.detail,
+      });
+    }
+    return rejectedResult(mutationId, 'INTERNAL', 'Server could not apply the mutation', { code: db.code });
+  }
+
+  /**
+   * The stored result of a mutation that was already applied. A result stored before the card
+   * schema gained fields no longer parses; the mutation is applied all the same, so the reply then
+   * carries the card as it is now instead of failing every retry of that mutation.
+   */
+  private async replayStored(
+    client: Tx,
+    stored: Prisma.JsonValue,
+    mutationId: string,
+    raw: unknown,
+  ): Promise<MutationResult> {
+    const value = stripConflictsWithoutIds(stored);
+    const parsed = mutationResultSchema.safeParse(value);
+    if (parsed.success) {
+      return parsed.data;
+    }
+    this.logger.warn(
+      `Stored result of mutation ${mutationId} no longer matches the schema; replying with the current card. ` +
+        `Issues: ${formatPayload(parsed.error.issues, 2_000)}`,
+    );
+
+    const record = isRecord(value) ? value : {};
+    if (record.status === 'rejected') {
+      const error = isRecord(record.error) ? record.error : {};
+      const code = MUTATION_ERROR_CODES.find((item) => item === error.code) ?? 'INTERNAL';
+      return rejectedResult(mutationId, code, typeof error.message === 'string' ? error.message : 'Mutation was rejected');
+    }
+    const storedCard = isRecord(record.card) ? record.card : {};
+    const cardId = typeof storedCard.id === 'string' ? storedCard.id : readField(raw, 'cardId');
+    const card = cardId ? await this.loadCard(client, cardId) : null;
+    if (!card) {
+      return rejectedResult(mutationId, 'NOT_FOUND', `Card ${cardId ?? '(unknown)'} not found`);
+    }
+    if (record.status === 'merged') {
+      const conflicts = (Array.isArray(record.conflicts) ? record.conflicts : []).flatMap((item) => {
+        const conflict = syncConflictSchema.safeParse(item);
+        return conflict.success ? [conflict.data] : [];
+      });
+      return { mutationId, status: 'merged', card: toCardDto(card), conflicts };
+    }
+    return { mutationId, status: 'applied', card: toCardDto(card) };
   }
 
   private async applyInTransaction(tx: Tx, deviceId: string, raw: unknown): Promise<MutationResult> {
@@ -164,7 +276,7 @@ export class SyncService {
     if (claimedId) {
       const existing = await tx.processedMutation.findUnique({ where: { mutationId: claimedId } });
       if (existing) {
-        return readStoredResult(existing.result);
+        return this.replayStored(tx, existing.result, claimedId, raw);
       }
     }
 
@@ -201,6 +313,7 @@ export class SyncService {
       return rejectedResult(mutation.mutationId, 'NOT_FOUND', `Card ${mutation.cardId} not found`);
     }
 
+    // Every op merges by clock. A matching base version only decides whether a replaced value is a conflict.
     const fastPath = mutation.baseVersion === card.version;
     if (mutation.op === 'card.upsert') {
       return this.applyCardUpsert(tx, deviceId, mutation, card, fastPath);
@@ -246,35 +359,15 @@ export class SyncService {
     fastPath: boolean,
   ): Promise<MutationResult> {
     const dto = toCardDto(card);
-    const clock = { ...dto.fieldClock };
-    const discarded: DiscardedValue[] = [];
-    const columns: Partial<Record<CardField, unknown>> = {};
-
-    for (const field of mutation.changedFields) {
-      const incoming = mutation.patch[field];
-      if (fastPath) {
-        columns[field] = incoming;
-        clock[field] = mutation.hlc;
-        continue;
-      }
-      const merged = mergeField({
-        entity: 'card',
-        entityId: card.id,
-        field,
-        stored: dto[field],
-        incoming,
-        storedClock: clock[field],
-        incomingClock: mutation.hlc,
-      });
-      if (isNewerHlc(merged.clock, clock[field])) {
-        columns[field] = merged.value;
-        clock[field] = merged.clock;
-      }
-      if (merged.discarded) {
-        discarded.push(merged.discarded);
-      }
-    }
-
+    const { columns, clock, discarded } = mergeCardPatch({
+      cardId: card.id,
+      stored: dto,
+      storedClock: dto.fieldClock,
+      patch: mutation.patch,
+      changedFields: mutation.changedFields,
+      hlc: mutation.hlc,
+      fastPath,
+    });
     const saved = await this.saveCard(tx, card, columns, clock);
     const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
@@ -288,29 +381,14 @@ export class SyncService {
     fastPath: boolean,
   ): Promise<MutationResult> {
     const dto = toCardDto(card);
-    const clock = { ...dto.fieldClock };
-    let deletedAt = dto.deletedAt;
-    const discarded: DiscardedValue[] = [];
-
-    if (fastPath) {
-      deletedAt = mutation.deletedAt;
-      clock.deletedAt = mutation.hlc;
-    } else {
-      const merged = mergeField({
-        entity: 'card',
-        entityId: card.id,
-        field: 'deletedAt',
-        stored: dto.deletedAt,
-        incoming: mutation.deletedAt,
-        storedClock: clock.deletedAt,
-        incomingClock: mutation.hlc,
-      });
-      deletedAt = merged.value as string | null;
-      clock.deletedAt = merged.clock;
-      if (merged.discarded) {
-        discarded.push(merged.discarded);
-      }
-    }
+    const { deletedAt, clock, discarded } = mergeCardDelete({
+      cardId: card.id,
+      storedDeletedAt: dto.deletedAt,
+      storedClock: dto.fieldClock,
+      deletedAt: mutation.deletedAt,
+      hlc: mutation.hlc,
+      fastPath,
+    });
 
     const saved = await tx.casualtyCard.update({
       where: { id: card.id },
@@ -339,17 +417,16 @@ export class SyncService {
     }
 
     const incoming = wireChild(mutation.entity, mutation.row as unknown as Record<string, unknown>);
-    const storedWire = stored ? wireChild(mutation.entity, stored) : null;
-    const merged = fastPath
-      ? { row: incoming, discarded: null }
-      : mergeChildRow({ entity: mutation.entity, stored: storedWire, incoming });
-    const incomingWins = !storedWire || merged.row.clientUpdatedAt === incoming.clientUpdatedAt;
-
-    if (incomingWins) {
-      await this.writeChild(tx, mutation.entity, stored ? { ...merged.row, id: stored.id } : merged.row);
+    const { write, discarded } = mergeChildUpsert({
+      entity: mutation.entity,
+      stored: stored ? wireChild(mutation.entity, stored) : null,
+      incoming,
+      fastPath,
+    });
+    if (write) {
+      await this.writeChild(tx, mutation.entity, stored ? { ...write, id: stored.id } : write);
     }
 
-    const discarded = merged.discarded ? [merged.discarded] : [];
     const saved = await this.bumpCard(tx, card);
     const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
@@ -367,24 +444,17 @@ export class SyncService {
       return rejectedResult(mutation.mutationId, 'NOT_FOUND', `Child row ${mutation.entityId} not found`);
     }
 
-    const storedWire = wireChild(mutation.entity, stored);
-    const merged = fastPath
-      ? {
-          row: { ...storedWire, deletedAt: mutation.deletedAt, clientUpdatedAt: mutation.hlc },
-          discarded: null,
-        }
-      : mergeTombstone({
-          entity: mutation.entity,
-          stored: storedWire,
-          deletedAt: mutation.deletedAt,
-          hlc: mutation.hlc,
-        });
-
-    if (merged.row.deletedAt !== storedWire.deletedAt || merged.row.clientUpdatedAt !== storedWire.clientUpdatedAt) {
-      await this.writeChild(tx, mutation.entity, merged.row);
+    const { write, discarded } = mergeChildDelete({
+      entity: mutation.entity,
+      stored: wireChild(mutation.entity, stored),
+      deletedAt: mutation.deletedAt,
+      hlc: mutation.hlc,
+      fastPath,
+    });
+    if (write) {
+      await this.writeChild(tx, mutation.entity, write);
     }
 
-    const discarded = merged.discarded ? [merged.discarded] : [];
     const saved = await this.bumpCard(tx, card);
     const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
@@ -608,13 +678,17 @@ function wireChild(entity: ChildEntity, row: Record<string, unknown>): Record<st
   return data as { id: string; clientUpdatedAt: string; deletedAt: string | null };
 }
 
+/**
+ * `applied` when the device had seen the stored version and nothing it sent was
+ * dropped; `merged` otherwise, with the conflicts to review.
+ */
 function resultOf(
   mutationId: string,
   fastPath: boolean,
   card: CasualtyCard,
   conflicts: SyncConflictInfo[],
 ): MutationResult {
-  if (fastPath) {
+  if (fastPath && conflicts.length === 0) {
     return { mutationId, status: 'applied', card };
   }
   return { mutationId, status: 'merged', card, conflicts };
@@ -630,19 +704,21 @@ function rejectedResult(
 }
 
 function readMutationId(raw: unknown): string | null {
-  if (typeof raw === 'object' && raw !== null && 'mutationId' in raw) {
-    const id = (raw as { mutationId?: unknown }).mutationId;
-    return typeof id === 'string' ? id : null;
-  }
-  return null;
+  return readField(raw, 'mutationId');
 }
 
-function readStoredResult(value: Prisma.JsonValue): MutationResult {
-  const parsed = mutationResultSchema.safeParse(stripConflictsWithoutIds(value));
-  if (!parsed.success) {
-    throw new Error('Stored mutation result is invalid');
-  }
-  return parsed.data;
+function readField(raw: unknown, key: string): string | null {
+  const value = isRecord(raw) ? raw[key] : undefined;
+  return typeof value === 'string' ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** 50 ms, then 100 ms, plus up to 50 ms of jitter so concurrent retries do not collide again. */
+function retryDelayMs(attempt: number): number {
+  return 50 * 2 ** (attempt - 1) + Math.floor(Math.random() * 50);
 }
 
 /** Replay of a mutation stored before conflict ids existed still returns the card. */
