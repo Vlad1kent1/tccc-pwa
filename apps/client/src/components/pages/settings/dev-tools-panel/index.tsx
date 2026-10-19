@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { EvacPriority } from "@tccc/shared";
 import { useT } from "@/i18n/use-t";
-import { casualtyRepo } from "@/lib/db";
+import { casualtyRepo, db } from "@/lib/db";
 
 const FIRST_NAMES = ["Oleksandr", "Nataliia", "Yurii", "Olena", "Maksym", "Kateryna", "Andrii", "Iryna", "Serhii", "Oksana"];
 const LAST_NAMES = ["Kovalenko", "Shevchenko", "Melnyk", "Bondarenko", "Kravchenko", "Tkachenko", "Boyko", "Koval", "Oliinyk", "Lysenko"];
@@ -36,6 +36,22 @@ export function DevToolsPanel() {
     }
   }
 
+  async function reset(): Promise<void> {
+    if (!window.confirm(t("dev.resetConfirm"))) return;
+    setBusy(true);
+    setDone(false);
+    setError(null);
+    try {
+      // Drops cards, outbox, conflicts, and meta (device id, pull cursor). The unit
+      // token survives in localStorage and is mirrored back on the next read.
+      await db.delete();
+      window.location.reload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      setBusy(false);
+    }
+  }
+
   return (
     <section aria-labelledby="dev-tools-heading" className="surface flex flex-col gap-4">
       <h2 id="dev-tools-heading" className="text-lg font-medium">
@@ -46,6 +62,10 @@ export function DevToolsPanel() {
         {busy ? t("dev.generating") : t("dev.generate")}
       </button>
       {done ? <p className="text-sm text-muted">{t("dev.generated")}</p> : null}
+      <p className="text-sm text-muted">{t("dev.resetHint")}</p>
+      <button type="button" className="btn btn-danger self-start" disabled={busy} onClick={() => void reset()}>
+        {t("dev.reset")}
+      </button>
       {error ? <p className="error-text">{error}</p> : null}
     </section>
   );

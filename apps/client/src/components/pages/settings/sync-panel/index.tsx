@@ -5,8 +5,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { useT } from "@/i18n/use-t";
 import { db, type LocalConflict, type OutboxMutation } from "@/lib/db";
-import { requestSync, resolveLocalConflict, useSyncStatus } from "@/lib/sync";
-import { showToast } from "@/components/layout/toast-store";
+import { isUnauthorized, requestSync, resolveLocalConflict, useSyncStatus } from "@/lib/sync";
+import { patchSyncStatus } from "@/lib/sync/status-store";
 
 function showValue(value: unknown): string {
   if (value == null) return "—";
@@ -19,11 +19,19 @@ export function SyncPanel() {
   const status = useSyncStatus();
   const [busy, setBusy] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const [resolveErrorId, setResolveErrorId] = useState<string | null>(null);
 
   function choose(conflict: LocalConflict, choice: ResolveConflictBody["choice"]) {
+    setResolveError(null);
+    setResolveErrorId(null);
     setResolvingId(conflict.id);
     void resolveLocalConflict(db, conflict, choice)
-      .catch(() => showToast(t("syncPage.resolveFailed")))
+      .catch((error: unknown) => {
+        if (isUnauthorized(error)) patchSyncStatus({ authProblem: "rejected" });
+        setResolveErrorId(conflict.id);
+        setResolveError(t("syncPage.resolveFailed"));
+      })
       .finally(() => setResolvingId(null));
   }
   const outbox = useLiveQuery(() => db.outbox.orderBy("seq").toArray(), [], [] as OutboxMutation[]);
@@ -135,6 +143,7 @@ export function SyncPanel() {
                     {t("syncPage.useOther")}
                   </button>
                 </div>
+                {resolveError && resolveErrorId === conflict.id ? <p className="error-text mt-3">{resolveError}</p> : null}
               </li>
             ))}
           </ul>
