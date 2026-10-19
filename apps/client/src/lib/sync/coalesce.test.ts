@@ -34,21 +34,72 @@ function upsert(
 }
 
 describe("coalesceOutbox", () => {
-  it("merges card fields, letting the highest HLC win each field", () => {
+  it("lets the highest HLC win each field and keeps that edit's own clock", () => {
     const first = upsert(1, { lastName: "Early", evacPriority: "ROUTINE" }, 1);
     const second = upsert(2, { evacPriority: "URGENT", allergies: "penicillin" }, 3);
     const skewed = upsert(3, { lastName: "Stale" }, 0);
 
     const { mutations, deleteSeqs } = coalesceOutbox([first, second, skewed]);
 
-    expect(mutations).toHaveLength(1);
-    expect(mutations[0]).toMatchObject({
-      seq: 1,
-      hlc: hlc(3),
-      patch: { lastName: "Early", evacPriority: "URGENT", allergies: "penicillin" },
-      baseVersion: 1,
-    });
+    // lastName was last written at hlc(1); sending it under hlc(3) would let it beat a newer remote edit.
+    expect(mutations).toEqual([
+      expect.objectContaining({ seq: 1, hlc: hlc(1), patch: { lastName: "Early" }, changedFields: ["lastName"], baseVersion: 1 }),
+      expect.objectContaining({
+        seq: 2,
+        hlc: hlc(3),
+        patch: { evacPriority: "URGENT", allergies: "penicillin" },
+        changedFields: ["evacPriority", "allergies"],
+        baseVersion: 1,
+      }),
+    ]);
+    expect(deleteSeqs).toEqual([3]);
+  });
+
+  it("collapses repeated edits of one field into the newest", () => {
+    const typed = [upsert(1, { notes: "T" }, 1), upsert(2, { notes: "TQ" }, 2), upsert(3, { notes: "TQ R arm" }, 3)];
+    const { mutations, deleteSeqs } = coalesceOutbox(typed);
+    expect(mutations).toEqual([expect.objectContaining({ seq: 1, hlc: hlc(3), patch: { notes: "TQ R arm" } })]);
     expect(deleteSeqs.sort()).toEqual([2, 3]);
+  });
+
+  it("sends the card before its child rows even when every field was edited again later", () => {
+    const create = upsert(1, { lastName: "A" }, 1, { baseVersion: null });
+    const vital: OutboxMutation = {
+      seq: 2,
+      op: "child.upsert",
+      entity: "vitalSigns",
+      row: {
+        id: TOURNIQUET,
+        cardId: CARD,
+        measuredAt: "2026-09-23T12:00:00.000Z",
+        pulseRate: 90,
+        pulseLocation: null,
+        systolic: null,
+        diastolic: null,
+        respiratoryRate: null,
+        spo2: null,
+        avpu: null,
+        painScale: null,
+        clientUpdatedAt: hlc(2),
+        deletedAt: null,
+      },
+      mutationId: "01999999-9999-7000-8000-000000000013",
+      cardId: CARD,
+      hlc: hlc(2),
+      baseVersion: null,
+      status: "queued",
+      attempts: 0,
+      createdAt: 2,
+    };
+    const rename = upsert(3, { lastName: "B" }, 3, { baseVersion: null });
+
+    const { mutations, deleteSeqs } = coalesceOutbox([create, vital, rename]);
+    expect(mutations.map((entry) => [entry.seq, entry.op])).toEqual([
+      [1, "card.upsert"],
+      [2, "child.upsert"],
+    ]);
+    expect(mutations[0]).toMatchObject({ mutationId: rename.mutationId, hlc: hlc(3), patch: { lastName: "B" } });
+    expect(deleteSeqs).toEqual([3]);
   });
 
   it("keeps different cards and child entities apart", () => {

@@ -16,38 +16,44 @@ function anchorSeq(entry: OutboxMutation): number {
   return entry.seq ?? Number.MAX_SAFE_INTEGER;
 }
 
-function coalesceCardUpserts(upserts: Extract<OutboxMutation, { op: "card.upsert" }>[]): OutboxMutation {
+type CardUpsert = Extract<OutboxMutation, { op: "card.upsert" }>;
+
+/**
+ * Merges queued patches of one card. Each field keeps the value of its newest
+ * edit and that edit's clock, so fields last edited by the same entry travel
+ * together, one mutation per entry. One clock for all fields would make an older
+ * edit look as new as the latest, and the server would let it overwrite another
+ * device's newer value. The first mutation takes the earliest position, so the
+ * card still reaches the server before its child rows.
+ */
+function coalesceCardUpserts(upserts: CardUpsert[]): OutboxMutation[] {
   const ordered = [...upserts].sort((a, b) => anchorSeq(a) - anchorSeq(b));
   const first = ordered[0]!;
-  const fields = new Map<CardField, { value: unknown; hlc: string }>();
-
+  const winners = new Map<CardField, CardUpsert>();
   for (const entry of ordered) {
     for (const field of entry.changedFields) {
-      const current = fields.get(field);
-      if (!current || later(entry.hlc, current.hlc)) {
-        fields.set(field, { value: entry.patch[field], hlc: entry.hlc });
-      }
+      const current = winners.get(field);
+      if (!current || later(entry.hlc, current.hlc)) winners.set(field, entry);
     }
   }
 
-  let winner = first;
-  for (const entry of ordered) {
-    if (later(entry.hlc, winner.hlc)) winner = entry;
-  }
+  const fieldsByEntry = new Map<CardUpsert, CardField[]>();
+  for (const [field, entry] of winners) fieldsByEntry.set(entry, [...(fieldsByEntry.get(entry) ?? []), field]);
+  const attempts = Math.max(...ordered.map((entry) => entry.attempts));
 
-  const patch = Object.fromEntries([...fields].map(([field, value]) => [field, value.value]));
-  return {
-    ...winner,
-    seq: first.seq,
-    baseVersion: first.baseVersion,
-    hlc: winner.hlc,
-    patch,
-    changedFields: [...fields.keys()],
-    attempts: Math.max(...ordered.map((entry) => entry.attempts)),
-    createdAt: first.createdAt,
-    status: "queued",
-    lastError: undefined,
-  };
+  return [...fieldsByEntry]
+    .sort(([a], [b]) => anchorSeq(a) - anchorSeq(b))
+    .map(([entry, fields], index) => ({
+      ...entry,
+      seq: index === 0 ? first.seq : entry.seq,
+      createdAt: index === 0 ? first.createdAt : entry.createdAt,
+      baseVersion: first.baseVersion,
+      patch: Object.fromEntries(fields.map((field) => [field, entry.patch[field]])),
+      changedFields: fields,
+      attempts,
+      status: "queued",
+      lastError: undefined,
+    }));
 }
 
 function childKey(entry: OutboxMutation): string | null {
@@ -66,7 +72,7 @@ function winningChild(entries: OutboxMutation[]): OutboxMutation {
 }
 
 function coalesceCard(entries: OutboxMutation[]): OutboxMutation[] {
-  const upserts = entries.filter((entry): entry is Extract<OutboxMutation, { op: "card.upsert" }> => entry.op === "card.upsert");
+  const upserts = entries.filter((entry): entry is CardUpsert => entry.op === "card.upsert");
   const deletes = entries.filter((entry) => entry.op === "card.delete");
   const children = new Map<string, OutboxMutation[]>();
 
@@ -79,16 +85,15 @@ function coalesceCard(entries: OutboxMutation[]): OutboxMutation[] {
   }
 
   const result: OutboxMutation[] = [];
-  if (upserts.length > 0) result.push(coalesceCardUpserts(upserts));
+  if (upserts.length > 0) result.push(...coalesceCardUpserts(upserts));
   for (const group of children.values()) result.push(winningChild(group));
   if (deletes.length > 0) result.push(winningChild(deletes));
   return result.sort((a, b) => anchorSeq(a) - anchorSeq(b));
 }
 
 /**
- * Merges queued mutations for the same card and entity. Later patch fields
- * override earlier ones; the highest HLC wins a field when clocks disagree.
- * Failed and in-flight rows are left untouched.
+ * Merges queued mutations for the same card and entity. The highest HLC wins a
+ * field, and keeps its own clock. Failed and in-flight rows are left untouched.
  */
 export function coalesceOutbox(entries: OutboxMutation[]): CoalesceResult {
   const queued = entries.filter((entry) => entry.status === "queued");

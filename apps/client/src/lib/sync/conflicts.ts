@@ -7,8 +7,11 @@ import {
   type ChildRowByEntity,
   type ResolveConflictBody,
 } from "@tccc/shared";
-import { activeFlag, type LocalCasualtyCard, type LocalConflict, type OutboxMutation, type TcccDB } from "@/lib/db";
+import { activeFlag, nextHlc, type LocalCasualtyCard, type LocalConflict, type OutboxMutation, type TcccDB } from "@/lib/db";
+import { withSiteCode } from "@/lib/db/injury-site-code";
+import { getNetworkAdjustedTime, networkNowIso } from "@/lib/network-clock";
 import { resolveConflict } from "./api";
+import { withSyncLock } from "./lock";
 import { rebaseCard } from "./rebase";
 
 export interface QueuedDecision {
@@ -78,8 +81,9 @@ export function restoreDiscarded(card: LocalCasualtyCard, conflict: LocalConflic
   }
   const entity = conflict.entity;
   if (conflict.field === "row") {
+    const discarded = conflict.discarded && typeof conflict.discarded === "object" ? (conflict.discarded as Record<string, unknown>) : {};
     const parsed = childSchemas[entity].safeParse({
-      ...(conflict.discarded && typeof conflict.discarded === "object" ? conflict.discarded : {}),
+      ...(entity === "injurySite" ? withSiteCode(discarded) : discarded),
       id: conflict.entityId,
       cardId: conflict.cardId,
     });
@@ -99,33 +103,42 @@ export function restoreDiscarded(card: LocalCasualtyCard, conflict: LocalConflic
   return card;
 }
 
-/** Posts the choice, then stores the server card and closes the local conflict together. */
-export async function resolveLocalConflict(
+/**
+ * Posts the choice, then stores the server card and closes the local conflict
+ * together. Runs under the sync lock: a push rewrites the same queued entries
+ * when it merges the outbox, and must not interleave with this.
+ */
+export function resolveLocalConflict(
   db: TcccDB,
   conflict: LocalConflict,
   choice: ResolveConflictBody["choice"],
 ): Promise<void> {
-  const response = await resolveConflict(conflict.id, choice);
-  await db.transaction("rw", [db.casualties, db.conflicts, db.outbox], async () => {
-    const queued = await db.outbox
-      .where("cardId")
-      .equals(conflict.cardId)
-      .and((entry) => entry.status === "queued")
-      .sortBy("seq");
-    const { keep, dropSeqs } = queuedAfterDecision(queued, conflict, response.card.version);
-    if (dropSeqs.length > 0) await db.outbox.bulkDelete(dropSeqs);
-    const rewritten = keep.filter((entry) => entry.seq != null);
-    if (rewritten.length > 0) await db.outbox.bulkPut(rewritten);
+  return withSyncLock(async () => {
+    const response = await resolveConflict(conflict.id, choice);
+    await db.transaction("rw", [db.casualties, db.conflicts, db.outbox, db.meta], async () => {
+      const queued = await db.outbox
+        .where("cardId")
+        .equals(conflict.cardId)
+        .and((entry) => entry.status === "queued")
+        .sortBy("seq");
+      const { keep, dropSeqs } = queuedAfterDecision(queued, conflict, response.card.version);
+      if (dropSeqs.length > 0) await db.outbox.bulkDelete(dropSeqs);
+      const rewritten = keep.filter((entry) => entry.seq != null);
+      if (rewritten.length > 0) await db.outbox.bulkPut(rewritten);
 
-    const others = await db.conflicts
-      .where("[cardId+open]")
-      .equals([conflict.cardId, 1])
-      .filter((row) => row.id !== conflict.id)
-      .count();
-    const status = others > 0 ? "conflict" : keep.length > 0 ? "pending" : "synced";
-    const rebased = rebaseCard(response.card, keep, status);
-    const next = choice === "discarded" ? restoreDiscarded(rebased, conflict) : rebased;
-    await db.casualties.put(next);
-    await db.conflicts.update(conflict.id, { resolvedAt: new Date().toISOString(), open: 0 });
+      const others = await db.conflicts
+        .where("[cardId+open]")
+        .equals([conflict.cardId, 1])
+        .filter((row) => row.id !== conflict.id)
+        .count();
+      const status = others > 0 ? "conflict" : keep.length > 0 ? "pending" : "synced";
+      const stored = await db.casualties.get(conflict.cardId);
+      const rebased = rebaseCard(response.card, keep, status, stored);
+      const next = choice === "discarded" ? restoreDiscarded(rebased, conflict) : rebased;
+      // A decision changes what open screens show; a fresh clock makes them take it.
+      next.clientUpdatedAt = await nextHlc(db, getNetworkAdjustedTime());
+      await db.casualties.put(next);
+      await db.conflicts.update(conflict.id, { resolvedAt: networkNowIso(), open: 0 });
+    });
   });
 }

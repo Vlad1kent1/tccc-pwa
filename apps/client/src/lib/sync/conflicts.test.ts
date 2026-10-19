@@ -1,7 +1,16 @@
-import { emptyCardFields, formatHlc, newId, type VitalSigns } from "@tccc/shared";
-import { describe, expect, it } from "vitest";
-import type { LocalCasualtyCard, LocalConflict, OutboxMutation } from "@/lib/db";
-import { queuedAfterDecision, restoreDiscarded } from "./conflicts";
+import { emptyCardFields, formatHlc, newId, type CasualtyCard, type VitalSigns } from "@tccc/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TcccDB, type LocalCasualtyCard, type LocalConflict, type OutboxMutation } from "@/lib/db";
+
+const resolveConflict = vi.hoisted(() => vi.fn());
+
+vi.mock("./api", async () => {
+  const actual = await vi.importActual<typeof import("./api")>("./api");
+  return { ...actual, resolveConflict: (...args: unknown[]) => resolveConflict(...args) };
+});
+
+import { queuedAfterDecision, resolveLocalConflict, restoreDiscarded } from "./conflicts";
+import { withSyncLock } from "./lock";
 
 const deviceId = "0192f100-0000-7000-8000-00000000000a";
 const clock = formatHlc({ wallTime: 1_790_000_000_000, counter: 1, nodeId: deviceId });
@@ -171,5 +180,59 @@ describe("queuedAfterDecision", () => {
 
     expect(decision.keep).toEqual([]);
     expect(decision.dropSeqs).toEqual([7]);
+  });
+});
+
+describe("resolveLocalConflict", () => {
+  let db: TcccDB;
+
+  beforeEach(() => {
+    db = new TcccDB(`tccc-conflict-${crypto.randomUUID()}`);
+    resolveConflict.mockReset();
+  });
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    await db.delete();
+  });
+
+  async function openConflict() {
+    const cardId = newId();
+    const vitalId = newId();
+    const local = card(vital(cardId, vitalId, 99));
+    await db.casualties.put(local);
+    const open = conflict(cardId, vitalId, vital(cardId, vitalId, 70));
+    await db.conflicts.put(open);
+    const server: CasualtyCard = {
+      ...local,
+      version: 5,
+      changeSeq: "5",
+      serverUpdatedAt: measuredAt,
+    } as unknown as CasualtyCard;
+    resolveConflict.mockResolvedValue({ conflict: {}, card: server });
+    return open;
+  }
+
+  async function waitsForTheSyncLock() {
+    const open = await openConflict();
+    let release!: () => void;
+    const sync = withSyncLock(() => new Promise<void>((resolve) => (release = resolve)));
+
+    const resolving = resolveLocalConflict(db, open, "kept");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(resolveConflict).not.toHaveBeenCalled();
+
+    release();
+    await sync;
+    await resolving;
+    expect(resolveConflict).toHaveBeenCalledTimes(1);
+    expect(await db.conflicts.get(open.id)).toMatchObject({ open: 0 });
+  }
+
+  it("waits for a running sync before it posts the decision", waitsForTheSyncLock);
+
+  it("waits for a running sync in this tab when the browser has no Web Locks", async () => {
+    vi.stubGlobal("navigator", {});
+    await waitsForTheSyncLock();
   });
 });
