@@ -50,11 +50,17 @@ describe('casualties API', () => {
 
   it('keeps health public and refuses casualty and sync routes without the unit token', async () => {
     await request(app.getHttpServer()).get('/api/health').expect(200);
+    // Each request is built just before it is sent. supertest starts the server for the
+    // first request built and closes it when that request ends, so a request built
+    // earlier would find the port closed (ECONNREFUSED).
+    const calls = [
+      () => request(app.getHttpServer()).get('/api/sync/pull').query({ since: '0' }),
+      () => request(app.getHttpServer()).get('/api/casualties'),
+      () => request(app.getHttpServer()).post('/api/sync/push').send({ deviceId: DEVICE, mutations: [] }),
+    ];
     for (const authorization of [undefined, 'Bearer wrong-token-0000000000', process.env.API_UNIT_TOKEN!]) {
-      const pull = request(app.getHttpServer()).get('/api/sync/pull').query({ since: '0' });
-      const list = request(app.getHttpServer()).get('/api/casualties');
-      const push = request(app.getHttpServer()).post('/api/sync/push').send({ deviceId: DEVICE, mutations: [] });
-      for (const call of [pull, list, push]) {
+      for (const build of calls) {
+        const call = build();
         const response = await (authorization ? call.set('Authorization', authorization) : call).expect(401);
         expect(response.headers['www-authenticate']).toBe('Bearer realm="tccc"');
       }
