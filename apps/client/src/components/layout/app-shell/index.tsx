@@ -1,20 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { loadStoredLocale } from "@/i18n/locale";
 import { useT } from "@/i18n/use-t";
 import { loadStoredTheme } from "@/lib/theme";
+import { AuthBanner } from "@/components/layout/auth-banner";
 import { ConnectivityIndicator } from "@/components/layout/connectivity-indicator";
 import { PersistenceBanner } from "@/components/layout/persistence-banner";
-import { SyncToast, ToastViewport } from "@/components/layout/toast-viewport";
+import { SaveStatusBanner } from "@/components/layout/save-status-banner";
 import { UpdateBanner } from "@/components/layout/update-banner";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { t } = useT();
   const atHome = pathname === "/";
+
+  function goBack(): void {
+    if (window.history.length <= 1) {
+      router.push("/");
+      return;
+    }
+    router.back();
+  }
 
   useEffect(() => {
     loadStoredLocale();
@@ -25,6 +35,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-dvh flex-1 flex-col">
       <UpdateBanner />
       <PersistenceBanner />
+      <AuthBanner />
       <header data-print-hide className="sticky top-0 z-40 shrink-0 border-b border-border bg-surface pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-3">
           {atHome ? (
@@ -32,9 +43,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               {t("app.title")}
             </Link>
           ) : (
-            <Link href="/" aria-label={t("nav.back")} className="btn btn-icon btn-secondary shrink-0">
+            <button type="button" aria-label={t("nav.back")} className="btn btn-icon btn-secondary shrink-0" onClick={goBack}>
               <BackIcon />
-            </Link>
+            </button>
           )}
           <div className="flex items-center gap-2">
             <ConnectivityIndicator />
@@ -45,10 +56,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             ) : null}
           </div>
         </div>
+        <SaveStatusBanner />
       </header>
       <div className="relative z-0 flex flex-1 flex-col pointer-events-auto">{children}</div>
-      <ToastViewport />
-      <SyncToast />
     </div>
   );
 }

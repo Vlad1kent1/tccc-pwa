@@ -1,51 +1,71 @@
 "use client";
 
 import Image from "next/image";
-import { memo, useState } from "react";
-import { BodyView, type BodyRegion, type BodyView as BodyViewName } from "@tccc/shared";
+import { memo, type MouseEvent } from "react";
+import { BodyView, type BodyView as BodyViewName } from "@tccc/shared";
 import { useT } from "@/i18n/use-t";
 import bodyBack from "@/components/pages/casualties/dd1380/assets/body-back.png";
 import bodyFront from "@/components/pages/casualties/dd1380/assets/body-front.png";
-import { regionFor } from "@/components/pages/casualties/dd1380/mapping";
-import { BACK_HITS, FRONT_HITS } from "@/components/pages/casualties/board/regions";
-import { SiteDrawer } from "@/components/pages/casualties/board/site-drawer";
-import { useSlice } from "@/components/pages/casualties/board/store";
+import { figureMarkClass } from "@/components/pages/casualties/board/figure-mark";
+import { figureMarkStyle } from "@/components/pages/casualties/board/regions";
+import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import type { BoardSnapshot } from "@/components/pages/casualties/board/snapshot";
 
 export const Mannequin = memo(function Mannequin() {
-  const { t, enumLabel } = useT();
+  const { t } = useT();
   const injuries = useSlice((state) => state.injuries);
-  const [view, setView] = useState<BodyViewName>(BodyView.FRONT);
-  const [region, setRegion] = useState<BodyRegion | null>(null);
-  const hits = view === BodyView.FRONT ? FRONT_HITS : BACK_HITS;
-  const marked = new Set(injuries.filter((row) => row.view === view && row.description).map((row) => regionFor(row.description!)));
 
   return (
-    <section aria-label={t("wizard.bodyDiagram")} className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">{t("wizard.sections.B")}</h2>
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" aria-pressed={view === BodyView.FRONT} className={view === BodyView.FRONT ? "chip chip-on" : "chip"} onClick={() => setView(BodyView.FRONT)}>
-            {t("wizard.viewFront")}
-          </button>
-          <button type="button" aria-pressed={view === BodyView.BACK} className={view === BodyView.BACK ? "chip chip-on" : "chip"} onClick={() => setView(BodyView.BACK)}>
-            {t("wizard.viewBack")}
-          </button>
-        </div>
-      </div>
-      <div className="relative mx-auto w-full max-w-sm">
-        <Image src={view === BodyView.FRONT ? bodyFront : bodyBack} alt="" className="h-auto w-full" priority />
-        {hits.map((hit) => (
-          <button
-            key={hit.region}
-            type="button"
-            className={marked.has(hit.region) ? "absolute rounded-xl border-2 border-red-600 bg-red-600/25" : "absolute rounded-xl border-2 border-transparent bg-transparent"}
-            style={{ left: `${hit.left}%`, top: `${hit.top}%`, width: `${hit.width}%`, height: `${hit.height}%` }}
-            aria-label={enumLabel("BodyRegion", hit.region)}
-            onClick={() => setRegion(hit.region)}
-          />
-        ))}
-      </div>
-      {region ? <SiteDrawer region={region} view={view} onClose={() => setRegion(null)} /> : null}
-    </section>
+    <div className="flex flex-1 flex-col gap-4 md:flex-row">
+      <Figure title={t("block4.front")} placeLabel={t("block4.placeMark")} removeLabel={t("block4.removeMark")} view={BodyView.FRONT} image={bodyFront} injuries={injuries} />
+      <Figure title={t("block4.back")} placeLabel={t("block4.placeMark")} removeLabel={t("block4.removeMark")} view={BodyView.BACK} image={bodyBack} injuries={injuries} />
+    </div>
   );
 });
+
+function Figure({
+  title,
+  placeLabel,
+  removeLabel,
+  view,
+  image,
+  injuries,
+}: {
+  title: string;
+  placeLabel: string;
+  removeLabel: string;
+  view: BodyViewName;
+  image: typeof bodyFront;
+  injuries: BoardSnapshot["injuries"];
+}) {
+  const board = useBoard();
+  const marks = injuries.filter((row) => row.view === view && row.x != null && row.y != null);
+
+  function place(event: MouseEvent<HTMLButtonElement>): void {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    board.placeInjury(view, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+  }
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <p className="text-center text-sm font-semibold">{title}</p>
+      <div className="relative mx-auto w-full max-w-xs">
+        <Image src={image} alt="" className="pointer-events-none h-auto w-full select-none" priority={view === BodyView.FRONT} draggable={false} />
+        <button type="button" aria-label={`${title}. ${placeLabel}`} className="absolute inset-0 cursor-crosshair bg-transparent" onClick={place} />
+        {marks.map((mark) => (
+          <button
+            key={mark.id}
+            type="button"
+            aria-label={removeLabel}
+            className={figureMarkClass("size-8 cursor-pointer text-xl text-danger-strong")}
+            style={figureMarkStyle(mark.x ?? 0, mark.y ?? 0)}
+            onClick={() => board.removeInjury(mark.id)}
+          >
+            X
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}

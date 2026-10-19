@@ -1,4 +1,4 @@
-import { BodyView, type BodyRegion, type BodyView as BodyViewName } from "@tccc/shared";
+import { BodyRegion, BodyView, type BodyView as BodyViewName } from "@tccc/shared";
 import { regionFor } from "@/components/pages/casualties/dd1380/mapping";
 import { ANTERIOR_SITES, POSTERIOR_SITES, type InjurySite } from "@/components/pages/casualties/dd1380/injury-sites";
 
@@ -71,4 +71,41 @@ export function figureFor(view: BodyViewName): { x0: number; y0: number; w: numb
   return view === BodyView.FRONT
     ? { x0: FRONT_BOX.x0, y0: FRONT_BOX.y0, w: FRONT_BOX.x1 - FRONT_BOX.x0, h: FRONT_BOX.y1 - FRONT_BOX.y0 }
     : { x0: BACK_BOX.x0, y0: BACK_BOX.y0, w: BACK_BOX.x1 - BACK_BOX.x0, h: BACK_BOX.y1 - BACK_BOX.y0 };
+}
+
+/**
+ * Percent position of a point inside a body figure.
+ * `x` and `y` are 0–1 across that figure, which is the same space the DD1380 card uses
+ * after it converts a PDF point into the figure box.
+ */
+export function figureMarkStyle(x: number, y: number): { left: string; top: string } {
+  return { left: `${x * 100}%`, top: `${y * 100}%` };
+}
+
+/** PDF point on the card, expressed as 0–1 inside the matching figure. */
+export function pdfToFigure(pdfX: number, pdfY: number, view: BodyViewName): { x: number; y: number } {
+  const figure = figureFor(view);
+  return {
+    x: Math.min(1, Math.max(0, (pdfX - figure.x0) / figure.w)),
+    y: Math.min(1, Math.max(0, (pdfY - figure.y0) / figure.h)),
+  };
+}
+
+/** Nearest anatomical region for a free tap on the figure. */
+export function regionAt(view: BodyViewName, x: number, y: number): BodyRegion {
+  const sites = view === BodyView.FRONT ? ANTERIOR_SITES : POSTERIOR_SITES;
+  const figure = figureFor(view);
+  let best = sites[0];
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const site of sites) {
+    const sx = (site.x - figure.x0) / figure.w;
+    const sy = (site.y - figure.y0) / figure.h;
+    const dist = (sx - x) ** 2 + (sy - y) ** 2;
+    if (dist < bestDist) {
+      best = site;
+      bestDist = dist;
+    }
+  }
+  if (!best) return BodyRegion.CHEST;
+  return regionFor(best.id);
 }

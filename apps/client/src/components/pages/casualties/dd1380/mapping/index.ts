@@ -6,17 +6,27 @@ import {
   BreathingTreatment,
   CirculationTreatment,
   EvacPriority,
-  FluidKind,
   Gender,
   Limb,
   MechanismOfInjury,
-  MedicationCategory,
   OtherTreatment,
   Route,
 } from "@tccc/shared";
 import type { LocalCasualtyCard } from "@/lib/db";
+import { timeTokenToIso, type TimeAnchor } from "@/lib/forms/time";
 import type { Dd1380Values } from "@/components/pages/casualties/dd1380/form-context";
+import { tourniquetPlacement } from "@/components/pages/casualties/board/treatment-flags";
 import { ANTERIOR_SITES, POSTERIOR_SITES } from "@/components/pages/casualties/dd1380/injury-sites";
+
+/** Row counts printed on the DD1380 card. Edit stores more; the sheet shows the latest rows. */
+export const PAPER_CAPACITY = {
+  vitals: 4,
+  fluid: 2,
+  blood: 2,
+  analgesic: 4,
+  antibiotic: 2,
+  otherMedication: 2,
+} as const;
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] as const;
 
@@ -58,27 +68,6 @@ const LIMBS: ReadonlyArray<readonly [Limb, string]> = [
   [Limb.LEFT_LEG, "l_leg"],
 ];
 
-const AVPU_LABEL: Record<Avpu, string> = {
-  ALERT: "A - Alert",
-  VERBAL: "V - Verbal",
-  PAIN: "P - Pain",
-  UNRESPONSIVE: "U - Unresponsive",
-};
-
-const PAIN_LABEL = [
-  "0 None",
-  "1 Very Mild",
-  "2 Discomfort",
-  "3 Tolerable",
-  "4 Distressing",
-  "5 Very Distress",
-  "6 Intense",
-  "7 Very Intense",
-  "8 Horrible",
-  "9 Excruciating",
-  "10 Unimaginable",
-] as const;
-
 const ROUTE_TO_PDF: Partial<Record<Route, string>> = {
   IM: "IM",
   IV: "IV",
@@ -100,6 +89,11 @@ const PDF_TO_ROUTE: Record<string, Route> = {
   SQ: Route.SC,
 };
 
+export function routeToPaper(route: Route | null): string {
+  if (!route) return "";
+  return ROUTE_TO_PDF[route] ?? "";
+}
+
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -118,21 +112,20 @@ export function formatCardTime(iso: string | null): string {
   return `${pad(date.getHours())}${pad(date.getMinutes())}`;
 }
 
-export function parseCardStamp(dateText: string, timeText: string, fallbackIso?: string | null): string | null {
-  const date = parseDdMmmYy(dateText) ?? (fallbackIso ? startOfLocalDay(fallbackIso) : startOfLocalDay(new Date().toISOString()));
+/**
+ * A paper date (`DD-MMM-YY`) and time box (`HHMM`). A blank or unfinished time, or an
+ * unfinished date, gives null: no midnight is made up. With no date, the time is
+ * placed by `timeTokenToIso` (most recent past occurrence, or the occurrence nearest
+ * to `anchor.near` when correcting a stored time).
+ */
+export function parseCardStamp(dateText: string, timeText: string, anchor: TimeAnchor = {}): string | null {
   const time = parseHmm(timeText);
-  if (!date && time == null) return null;
-  const base = date ?? new Date();
-  if (time) {
-    base.setHours(time.hours, time.minutes, 0, 0);
-  }
-  return base.toISOString();
-}
-
-function startOfLocalDay(iso: string): Date {
-  const date = new Date(iso);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  if (!time) return null;
+  if (!dateText.trim()) return timeTokenToIso(timeText.trim(), anchor);
+  const date = parseDdMmmYy(dateText);
+  if (!date) return null;
+  date.setHours(time.hours, time.minutes, 0, 0);
+  return date.toISOString();
 }
 
 function parseDdMmmYy(value: string): Date | null {
@@ -163,31 +156,80 @@ function on(values: Dd1380Values, name: string): boolean {
   return values[name] === true;
 }
 
-function nameLine(last: string | null, first: string | null): string {
-  return [last, first].filter(Boolean).join(", ");
+/**
+ * The sheet's single "Last, First" name line. A first name on its own keeps the
+ * comma (", Olena") so it reads back as a first name.
+ */
+export function cardNameLine(card: { lastName: string | null; firstName: string | null }): string {
+  if (card.firstName && !card.lastName) return `, ${card.firstName}`;
+  return [card.lastName, card.firstName].filter(Boolean).join(", ");
 }
 
-function splitName(value: string): { lastName: string | null; firstName: string | null } {
+/**
+ * Reads "Last, First" (the format printed on the card). Without a comma the whole
+ * line is the last name, so a multi-word last name such as "Van Damme" stays whole.
+ */
+export function splitName(value: string): { lastName: string | null; firstName: string | null } {
   const trimmed = value.trim();
   if (!trimmed) return { lastName: null, firstName: null };
   const comma = trimmed.indexOf(",");
-  if (comma >= 0) {
-    const lastName = trimmed.slice(0, comma).trim() || null;
-    const firstName = trimmed.slice(comma + 1).trim() || null;
-    return { lastName, firstName };
-  }
-  const parts = trimmed.split(/\s+/);
-  if (parts.length === 1) return { lastName: parts[0], firstName: null };
-  return { lastName: parts[0], firstName: parts.slice(1).join(" ") };
+  if (comma < 0) return { lastName: trimmed, firstName: null };
+  return {
+    lastName: trimmed.slice(0, comma).trim() || null,
+    firstName: trimmed.slice(comma + 1).trim() || null,
+  };
 }
 
-function active<T extends { deletedAt: string | null }>(rows: T[]): T[] {
+function active<T extends { deletedAt: string | null }>(rows: readonly T[]): T[] {
   return rows.filter((row) => row.deletedAt == null);
 }
 
-export function cardToValues(card: LocalCasualtyCard): Dd1380Values {
+/** What the sheet shows: a stored card, or the board store's snapshot of one. */
+export type SheetSource = Pick<
+  LocalCasualtyCard,
+  | "lastName"
+  | "firstName"
+  | "gender"
+  | "injuredAt"
+  | "battleRosterNumber"
+  | "evacPriority"
+  | "allergies"
+  | "casualtyLast4"
+  | "service"
+  | "unit"
+  | "mechanisms"
+  | "mechanismOther"
+  | "notes"
+  | "responderName"
+  | "responderLast4"
+  | "circulation"
+  | "airway"
+  | "breathing"
+  | "otherTreatments"
+  | "tqExtremity"
+  | "tqJunctional"
+  | "tqTruncal"
+  | "dressingOtherType"
+  | "circulationTqType"
+  | "circulationDressingType"
+  | "airwayType"
+  | "breathingType"
+  | "combatPillPack"
+  | "eyeShieldRight"
+  | "eyeShieldLeft"
+  | "hypothermiaType"
+> & {
+  tourniquets: readonly { limb: Limb; type: string; appliedAt: string; deletedAt: string | null }[];
+  injurySites: readonly { siteCode: string | null; deletedAt: string | null }[];
+};
+
+export function cardToValues(card: SheetSource): Dd1380Values {
+  const placement = tourniquetPlacement(card);
   const values: Record<string, string | boolean> = {};
-  values.name = nameLine(card.lastName, card.firstName);
+  values.name = cardNameLine(card);
+  values.service = card.service ?? "";
+  values.unit = card.unit ?? "";
+  values.last4 = card.casualtyLast4 ?? "";
   if (card.gender === Gender.MALE) values.male = true;
   if (card.gender === Gender.FEMALE) values.female = true;
   values.date = formatCardDate(card.injuredAt);
@@ -205,21 +247,34 @@ export function cardToValues(card: LocalCasualtyCard): Dd1380Values {
   values.firstResponder_name = card.responderName ?? "";
   values.firstResponder_last4 = card.responderLast4 ?? "";
 
-  if (card.circulation.includes(CirculationTreatment.TOURNIQUET)) values.treatment_C_TQ_Extremity = true;
+  if (placement.tqExtremity) values.treatment_C_TQ_Extremity = true;
+  if (placement.tqJunctional) values.treatment_C_TQ_Junctional = true;
+  if (placement.tqTruncal) values.treatment_C_TQ_Truncal = true;
   if (card.circulation.includes(CirculationTreatment.HEMOSTATIC)) values.treatment_C_Dressing_Hemostatic = true;
   if (card.circulation.includes(CirculationTreatment.PRESSURE)) values.treatment_C_Dressing_Pressure = true;
   if (card.circulation.includes(CirculationTreatment.DRESSING)) values.treatment_C_Dressing_Other = true;
+  if (card.dressingOtherType) values.treatment_C_Dressing_other_specify = card.dressingOtherType;
+  if (card.circulationTqType) values.treatment_C_TQ_type = card.circulationTqType;
+  if (card.circulationDressingType) values.treatment_C_Dressing_type = card.circulationDressingType;
+  if (card.airwayType) values.treatment_A_type = card.airwayType;
+  if (card.breathingType) values.treatment_B_type = card.breathingType;
   for (const [name, item] of AIRWAY) {
     if (card.airway.includes(item)) values[name] = true;
   }
   for (const [name, item] of BREATHING) {
     if (card.breathing.includes(item)) values[name] = true;
   }
-  if (card.otherTreatments.includes(OtherTreatment.EYE_SHIELD)) values.treatment_other_EyeShield = true;
+  if (card.combatPillPack) values.treatment_other_CombatPillPack = true;
+  if (card.eyeShieldRight || card.eyeShieldLeft || card.otherTreatments.includes(OtherTreatment.EYE_SHIELD)) {
+    values.treatment_other_EyeShield = true;
+  }
+  if (card.eyeShieldRight) values.treatment_other_R = true;
+  if (card.eyeShieldLeft) values.treatment_other_L = true;
   if (card.otherTreatments.includes(OtherTreatment.SPLINT)) values.treatment_other_Splint = true;
   if (card.otherTreatments.includes(OtherTreatment.HYPOTHERMIA_PREVENTION)) {
     values.treatment_other_HypothermiaPrevention = true;
   }
+  if (card.hypothermiaType) values.treatment_other_type = card.hypothermiaType;
 
   for (const [limb, prefix] of LIMBS) {
     const row = active(card.tourniquets).find((item) => item.limb === limb);
@@ -230,62 +285,10 @@ export function cardToValues(card: LocalCasualtyCard): Dd1380Values {
   }
 
   for (const site of active(card.injurySites)) {
-    if (site.description) values[site.description] = true;
+    if (site.siteCode) values[site.siteCode] = true;
   }
 
-  const vitals = [...active(card.vitalSigns)].sort((a, b) => a.measuredAt.localeCompare(b.measuredAt) || a.id.localeCompare(b.id)).slice(0, 4);
-  vitals.forEach((row, i) => {
-    const n = i + 1;
-    values[vitalSlotKey(n)] = row.id;
-    values[`time${n}`] = formatCardTime(row.measuredAt);
-    values[`pulse${n}`] = [row.pulseRate, row.pulseLocation].filter((part) => part != null && part !== "").join(" ");
-    if (row.systolic != null) values[`bloodPressureA${n}`] = String(row.systolic);
-    if (row.diastolic != null) values[`bloodPressureB${n}`] = String(row.diastolic);
-    if (row.respiratoryRate != null) values[`respRate${n}`] = String(row.respiratoryRate);
-    if (row.spo2 != null) values[`o2sat${n}`] = String(row.spo2);
-    if (row.avpu) values[`avpu${n}`] = AVPU_LABEL[row.avpu];
-    if (row.painScale != null) values[`pain${n}`] = PAIN_LABEL[row.painScale] ?? String(row.painScale);
-  });
-
-  fillKind(values, active(card.fluids).filter((row) => row.kind === FluidKind.FLUID), "treatment_C_Fluid", 2);
-  fillKind(values, active(card.fluids).filter((row) => row.kind === FluidKind.BLOOD_PRODUCT), "treatment_C_BloodProduct", 2);
-  fillMeds(values, active(card.medications).filter((row) => row.category === MedicationCategory.ANALGESIC), "treatment_MEDS_Analgesic", 3);
-  fillMeds(values, active(card.medications).filter((row) => row.category === MedicationCategory.ANTIBIOTIC), "treatment_MEDS_Antibiotic", 2);
-  fillMeds(values, active(card.medications).filter((row) => row.category === MedicationCategory.OTHER), "treatment_MEDS_Other", 2);
-
   return values;
-}
-
-function fillKind(
-  values: Record<string, string | boolean>,
-  rows: LocalCasualtyCard["fluids"],
-  prefix: string,
-  slots: number,
-) {
-  rows.slice(0, slots).forEach((row, i) => {
-    const n = i + 1;
-    values[slotKey(prefix, n)] = row.id;
-    values[`${prefix}_Name${n}`] = row.name;
-    values[`${prefix}_Volume${n}`] = String(row.volumeMl);
-    values[`${prefix}_Route${n}`] = ROUTE_TO_PDF[row.route] ?? "";
-    values[`${prefix}_Time${n}`] = formatCardTime(row.administeredAt);
-  });
-}
-
-function fillMeds(
-  values: Record<string, string | boolean>,
-  rows: LocalCasualtyCard["medications"],
-  prefix: string,
-  slots: number,
-) {
-  rows.slice(0, slots).forEach((row, i) => {
-    const n = i + 1;
-    values[slotKey(prefix, n)] = row.id;
-    values[`${prefix}_Name${n}`] = row.name;
-    values[`${prefix}_Dose${n}`] = row.dose;
-    values[`${prefix}_Route${n}`] = ROUTE_TO_PDF[row.route] ?? "";
-    values[`${prefix}_Time${n}`] = formatCardTime(row.administeredAt);
-  });
 }
 
 export function valuesToCardPatch(values: Dd1380Values) {
@@ -314,16 +317,18 @@ export function valuesToCardPatch(values: Dd1380Values) {
   if (on(values, "male")) gender = Gender.MALE;
   else if (on(values, "female")) gender = Gender.FEMALE;
 
-  const last4 = str(values.firstResponder_last4).replace(/\D/g, "").slice(0, 4);
-
   return {
     lastName,
     firstName,
     gender,
-    injuredAt: parseCardStamp(str(values.date), str(values.time)),
+    injuredAt: injuryStamp(values),
     battleRosterNumber: str(values.roster).replace(/[^\p{L}\p{N}]/gu, "").slice(0, 20) || null,
     evacPriority,
     allergies: str(values.allergies).trim() || null,
+    // Digits as typed: the board store holds a partial last 4 back until all four are in.
+    casualtyLast4: digits4(values.last4),
+    service: line(values, "service"),
+    unit: line(values, "unit"),
     mechanisms,
     mechanismOther: str(values.mechanism_specify).trim() || null,
     circulation,
@@ -332,16 +337,40 @@ export function valuesToCardPatch(values: Dd1380Values) {
     otherTreatments,
     notes: str(values.notes).trim() || null,
     responderName: str(values.firstResponder_name).trim() || null,
-    responderLast4: last4.length === 4 ? last4 : null,
+    responderLast4: digits4(values.firstResponder_last4),
+    tqExtremity: on(values, "treatment_C_TQ_Extremity"),
+    tqJunctional: on(values, "treatment_C_TQ_Junctional"),
+    tqTruncal: on(values, "treatment_C_TQ_Truncal"),
+    dressingOtherType: line(values, "treatment_C_Dressing_other_specify"),
+    circulationTqType: line(values, "treatment_C_TQ_type"),
+    circulationDressingType: line(values, "treatment_C_Dressing_type"),
+    airwayType: line(values, "treatment_A_type"),
+    breathingType: line(values, "treatment_B_type"),
+    combatPillPack: on(values, "treatment_other_CombatPillPack"),
+    eyeShieldRight: on(values, "treatment_other_R"),
+    eyeShieldLeft: on(values, "treatment_other_L"),
+    hypothermiaType: line(values, "treatment_other_type"),
   };
 }
 
-export function pulseParts(value: string): { pulseRate: number | null; pulseLocation: string | null } {
-  const trimmed = value.trim();
-  if (!trimmed) return { pulseRate: null, pulseLocation: null };
-  const match = trimmed.match(/^(\d+)\s*(.*)$/);
-  if (!match) return { pulseRate: null, pulseLocation: trimmed };
-  return { pulseRate: Number(match[1]), pulseLocation: match[2].trim() || null };
+/**
+ * Null when both boxes are empty (cleared). `undefined` while the time is missing or
+ * unfinished: the injury time is then left as stored instead of being saved at midnight.
+ */
+function injuryStamp(values: Dd1380Values): string | null | undefined {
+  const date = str(values.date).trim();
+  const time = str(values.time).trim();
+  if (!date && !time) return null;
+  return parseCardStamp(date, time) ?? undefined;
+}
+
+function digits4(value: Dd1380Values[string] | undefined): string | null {
+  return str(value).replace(/\D/g, "").slice(0, 4) || null;
+}
+
+/** One short text line of the sheet, as stored: trimmed, capped at 100, blank as null. */
+function line(values: Dd1380Values, name: string): string | null {
+  return str(values[name]).trim().slice(0, 100) || null;
 }
 
 export function parseAvpu(value: string): Avpu | null {
@@ -353,33 +382,16 @@ export function parseAvpu(value: string): Avpu | null {
   return null;
 }
 
-export function parsePain(value: string): number | null {
-  const match = value.trim().match(/^(\d{1,2})/);
-  if (!match) return null;
-  const n = Number(match[1]);
-  return n >= 0 && n <= 10 ? n : null;
-}
-
-export function parseVolume(value: string): number | null {
-  const match = value.trim().match(/(\d+)/);
-  if (!match) return null;
-  const n = Number(match[1]);
-  return n >= 1 && n <= 10000 ? n : null;
-}
-
 export function parseRoute(value: string): Route | null {
   return PDF_TO_ROUTE[value.trim().toUpperCase()] ?? null;
 }
 
-export function intField(value: string, min: number, max: number): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const n = Number(trimmed);
-  if (!Number.isInteger(n) || n < min || n > max) return null;
-  return n;
-}
-
 const ALL_SITES = [...ANTERIOR_SITES, ...POSTERIOR_SITES];
+const PAPER_SITE_IDS = new Set(ALL_SITES.map((site) => site.id));
+
+export function isPaperSite(id: string | null | undefined): boolean {
+  return id != null && PAPER_SITE_IDS.has(id);
+}
 
 export function markedSites(values: Dd1380Values): Array<{
   id: string;

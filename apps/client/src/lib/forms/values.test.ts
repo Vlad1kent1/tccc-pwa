@@ -1,16 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { isoToLocalInput, localInputToIso } from "./time";
-import { normalizeForm, responderPatch } from "./values";
+import { responderPatch } from "./values";
 
 describe("form values", () => {
-  it("trims text and maps blank strings to null", () => {
-    expect(normalizeForm({ lastName: "  Koval  ", battleRosterNumber: "   ", mechanisms: ["GSW"] })).toEqual({
-      lastName: "Koval",
-      battleRosterNumber: null,
-      mechanisms: ["GSW"],
-    });
-  });
-
   it("copies only a valid responder profile", () => {
     expect(responderPatch({ name: "  Ivanenko ", last4: "1234" })).toEqual({
       responderName: "Ivanenko",
