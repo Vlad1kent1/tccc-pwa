@@ -9,6 +9,8 @@ export interface LocalCard {
   syncStatus: string;
   serverVersion: number | null;
   activeVitals: number;
+  /** HLC of each field's last write. */
+  fieldClock: Record<string, string>;
 }
 
 export async function boot(page: Page): Promise<void> {
@@ -212,6 +214,7 @@ export async function readLocalCards(page: Page): Promise<LocalCard[]> {
           activeVitals: Array.isArray(row.vitalSigns)
             ? row.vitalSigns.filter((vital) => (vital as { deletedAt?: string | null }).deletedAt == null).length
             : 0,
+          fieldClock: (row.fieldClock as Record<string, string> | undefined) ?? {},
         }));
     } finally {
       db.close();
@@ -256,6 +259,15 @@ export async function outboxAttempts(page: Page): Promise<number> {
       db.close();
     }
   }));
+}
+
+/**
+ * Waits until the sync this document started on load has pulled. That pull measures the
+ * server clock offset; a pull still in flight when a test moves the page clock would
+ * measure the moved clock against the server and cancel the move.
+ */
+export async function waitForStartupSync(page: Page): Promise<void> {
+  await expect(page.locator('[data-connectivity="online"]')).toBeVisible({ timeout: 30_000 });
 }
 
 /** Asks the sync engine to run. Headless Chromium can defer the 2s write timer. */

@@ -31,6 +31,6 @@ test("T-13 storage pressure", async () => {
 test("NFR-03 vitals input time", async () => {
   test.skip(
     true,
-    "Manual: with 3 to 5 volunteers, time a complete vitals set on /casualties/card/vitals. NFR-03 target is at most 3 taps or 15 seconds. Record the times in docs/test-report.md.",
+    "Manual: with 3 to 5 volunteers, time a complete vitals set on the casualty edit board. NFR-03 target is at most 3 taps or 15 seconds. Record the times in docs/test-report.md.",
   );
 });

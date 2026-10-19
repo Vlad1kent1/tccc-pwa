@@ -1,6 +1,6 @@
 import { newId } from "@tccc/shared";
 import type { Page } from "@playwright/test";
-import { API_ORIGIN, expect, test, type ServerCounts } from "../src/fixtures";
+import { API_HEADERS, API_ORIGIN, expect, test, type ServerCounts } from "../src/fixtures";
 import { attachMetrics } from "../src/metrics";
 import {
   boot,
@@ -13,6 +13,7 @@ import {
   readLocalCards,
   reconnect,
   waitForListed,
+  waitForStartupSync,
 } from "../src/app";
 
 function tag(id: string): string {
@@ -138,7 +139,7 @@ test("T-04 dropped responses still apply each mutation once", async ({ playwrigh
   const prefix = tag("T04");
   const deviceId = newId();
   await setChaos({ dropRate: 0.5 });
-  const api = await playwright.request.newContext({ baseURL: API_ORIGIN });
+  const api = await playwright.request.newContext({ baseURL: API_ORIGIN, extraHTTPHeaders: API_HEADERS });
   try {
     for (let index = 0; index < 100; index += 1) {
       const cardId = newId();
@@ -292,28 +293,28 @@ test("T-08 a later vitals edit beats an earlier delete", async ({ twoDevices, se
   await boot(b);
   const id = await createCasualty(a, name);
   await expect.poll(async () => (await serverCounts(name)).cards.length, { timeout: 20_000 }).toBe(1);
-  await a.goto(`/casualties/card/vitals?id=${encodeURIComponent(id)}`);
-  await a.getByRole("button", { name: "Alert" }).click();
-  await expect(a.getByText("Vital signs saved.")).toBeVisible();
+  const editor = `/casualties/card/edit?id=${encodeURIComponent(id)}`;
+  await a.goto(editor);
+  const vitalsA = a.getByRole("region", { name: "5. Signs and symptoms" });
+  await vitalsA.getByRole("button", { name: "Add row" }).click();
+  await vitalsA.getByRole("combobox", { name: "AVPU" }).selectOption("ALERT");
   await expect.poll(async () => {
     const card = await cardNamed(await serverCounts(name), name);
     return card?.vitalSigns.some((vital) => vital.deletedAt == null) ?? false;
   }, { timeout: 20_000 }).toBe(true);
-  const editor = `/casualties/card/edit?id=${encodeURIComponent(id)}&section=C`;
   await a.goto(editor);
   await expect(a.getByRole("heading", { name: "Edit card" })).toBeVisible();
-  const vitalsA = a.getByRole("region", { name: "Vital signs" });
   await expect(vitalsA.getByRole("button", { name: "Remove" })).toBeVisible();
   await b.goto(editor);
-  const vitalsB = b.getByRole("region", { name: "Vital signs" });
+  const vitalsB = b.getByRole("region", { name: "5. Signs and symptoms" });
   await expect(vitalsB.getByRole("button", { name: "Remove" })).toBeVisible();
   await a.context().setOffline(true);
   await b.context().setOffline(true);
   await vitalsA.getByRole("button", { name: "Remove" }).click();
   await b.waitForTimeout(1200);
-  await vitalsB.getByRole("list").getByRole("button").first().click();
-  await vitalsB.getByRole("textbox", { name: "Pulse", exact: true }).fill("99");
-  await vitalsB.getByRole("button", { name: "Add" }).click();
+  const pulse = vitalsB.getByRole("textbox", { name: "Pulse", exact: true });
+  await pulse.fill("99");
+  await pulse.blur();
   await b.waitForTimeout(700);
   await reconnect(a);
   await reconnect(b);
@@ -360,23 +361,31 @@ test("T-14 a clock one hour ahead still orders by HLC", async ({ twoDevices, ser
   const id = await createCasualty(a, name);
   await expect.poll(async () => (await serverCounts(name)).cards.length, { timeout: 20_000 }).toBe(1);
   await waitForListed(b, name);
+  // A must not pull B's edit before making its own: seeing B's clock would make A's edit
+  // newer than it, and A would rightly win.
+  await a.context().setOffline(true);
   // The edit screen reads the query on the client, so its static shell has no
   // name field. Open it while the clock is still running, then freeze time.
   await b.clock.install();
   await b.goto(`/casualties/card/edit?id=${encodeURIComponent(id)}&section=A`);
   await expect(b.getByTestId("patient-name-input")).toBeVisible();
+  // The page's startup pull measures the server clock offset. Moving the clock while it
+  // is in flight would measure an hour of offset and stamp the edit with real time.
+  await waitForStartupSync(b);
   await b.context().setOffline(true);
   await b.clock.setFixedTime(Date.now() + 60 * 60 * 1000);
   // editField advances the fixed clock only long enough for the debounce, and
   // does not return until IndexedDB has the new name.
   await editField(b, id, "A", "Last name", `${name}-future`);
+  const futureClock = (await readLocalCards(b)).find((card) => card.id === id)?.fieldClock.lastName ?? "";
+  expect(Number(futureClock.split(":")[0]), `B stamped ${futureClock}, not a time an hour ahead`).toBeGreaterThan(
+    Date.now() + 30 * 60 * 1000,
+  );
   await b.clock.setFixedTime(Date.now());
   await reconnect(b);
   await expect.poll(async () => (await cardNamed(await serverCounts(`${name}-future`), `${name}-future`)) != null, {
     timeout: 20_000,
   }).toBe(true);
-  // Stay on the pre-pull version so the server compares HLC instead of taking the fast path.
-  await a.context().setOffline(true);
   await editField(a, id, "A", "Last name", `${name}-past`);
   await reconnect(a);
   await expect.poll(async () => (await serverCounts(`${name}-future`)).cards.length, { timeout: 20_000 }).toBe(1);
