@@ -1,4 +1,26 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type BrowserContext, type Page } from "@playwright/test";
+
+/**
+ * Contexts whose test installed a Playwright clock. Advancing a clock that was never
+ * installed does not fail: it installs one at the Unix epoch for the whole context, and
+ * every edit after that is stamped with a 1970 time.
+ */
+const installedClocks = new WeakSet<BrowserContext>();
+
+/** Installs a Playwright clock at the current time. Use instead of `page.clock.install()`. */
+export async function installClock(page: Page): Promise<void> {
+  await page.clock.install();
+  installedClocks.add(page.context());
+}
+
+/**
+ * A fixed Playwright clock runs no timers until time is advanced, so a debounced save
+ * would never happen. One second is enough for the debounce and keeps an hour-ahead
+ * clock ahead. Pages with the real clock are left alone.
+ */
+async function letDebounceRun(page: Page): Promise<void> {
+  if (installedClocks.has(page.context())) await page.clock.fastForward(1_000);
+}
 
 export interface LocalCard {
   id: string;
@@ -141,9 +163,7 @@ export async function editField(page: Page, id: string, section: string, label: 
   // Section forms save on a 400ms debounce, not on each keystroke.
   await field.blur();
   await page.keyboard.press("Tab");
-  // A fixed Playwright clock does not run timers until time is advanced.
-  // One second is enough for the debounce and keeps an hour-ahead clock ahead.
-  await page.clock.fastForward(1_000).catch(() => undefined);
+  await letDebounceRun(page);
   const stored = EDIT_FIELDS[label as keyof typeof EDIT_FIELDS];
   await expect
     .poll(async () => {
@@ -166,7 +186,7 @@ export async function choosePriority(page: Page, id: string, label: "Urgent" | "
   await expect(radio).toBeVisible();
   await radio.check();
   await page.keyboard.press("Tab");
-  await page.clock.fastForward(1_000).catch(() => undefined);
+  await letDebounceRun(page);
   await expect
     .poll(async () => (await readLocalCards(page)).some((card) => card.id === id && card.evacPriority === PRIORITY_VALUE[label]), {
       timeout: 15_000,

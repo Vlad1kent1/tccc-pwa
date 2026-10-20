@@ -7,6 +7,7 @@ import {
   choosePriority,
   createCasualty,
   editField,
+  installClock,
   manualSync,
   outboxAttempts,
   outboxCount,
@@ -366,7 +367,7 @@ test("T-14 a clock one hour ahead still orders by HLC", async ({ twoDevices, ser
   await a.context().setOffline(true);
   // The edit screen reads the query on the client, so its static shell has no
   // name field. Open it while the clock is still running, then freeze time.
-  await b.clock.install();
+  await installClock(b);
   await b.goto(`/casualties/card/edit?id=${encodeURIComponent(id)}&section=A`);
   await expect(b.getByTestId("patient-name-input")).toBeVisible();
   // The page's startup pull measures the server clock offset. Moving the clock while it

@@ -394,6 +394,41 @@ describe('sync API', () => {
     expect(await prisma.vitalSigns.count({ where: { cardId } })).toBe(1);
   });
 
+  it('records no conflict when a device edits a card it created before the create was acknowledged', async () => {
+    const cardId = newId();
+    // Both still claim no base version: the device pushed them together, before it saw version 1.
+    const response = await request(app.getHttpServer())
+      .post('/api/sync/push')
+      .send({
+        deviceId: DEVICE_A,
+        mutations: [
+          {
+            mutationId: newId(),
+            cardId,
+            op: 'card.upsert',
+            baseVersion: null,
+            patch: { lastName: 'Kravets', evacPriority: null },
+            changedFields: ['lastName', 'evacPriority'],
+            hlc: hlc(1_790_000_010_000, DEVICE_A),
+          },
+          {
+            mutationId: newId(),
+            cardId,
+            op: 'card.upsert',
+            baseVersion: null,
+            patch: { evacPriority: 'ROUTINE' },
+            changedFields: ['evacPriority'],
+            hlc: hlc(1_790_000_010_100, DEVICE_A),
+          },
+        ],
+      })
+      .expect(201);
+
+    expect(response.body.results[1]).toMatchObject({ card: { evacPriority: 'ROUTINE' } });
+    expect(response.body.results[1].conflicts ?? []).toEqual([]);
+    expect(await prisma.syncConflict.count({ where: { cardId } })).toBe(0);
+  });
+
   it('replays a mutation whose stored result predates the card schema with the current card', async () => {
     const cardId = newId();
     const mutation = {

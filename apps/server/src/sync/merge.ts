@@ -1,4 +1,4 @@
-import { isNewerHlc, type CardField, type ChildEntity, type SyncConflictInfo } from '@tccc/shared';
+import { HLC_PATTERN, isNewerHlc, type CardField, type ChildEntity, type SyncConflictInfo } from '@tccc/shared';
 
 /** A value that lost last-writer-wins, ready to persist as a `SyncConflict`. */
 export interface DiscardedValue {
@@ -16,11 +16,23 @@ export function sameJson(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * True when one device stamped both clocks (an HLC ends with the device id). A device's
+ * writes are ordered by its own clock, so one replacing another is an edit, never a
+ * conflict to review. It happens when a device's create and first edit reach the
+ * server in one push, before the create was acknowledged.
+ */
+export function sameWriter(storedClock: string, incomingClock: string): boolean {
+  const writer = HLC_PATTERN.exec(storedClock)?.[3];
+  return writer !== undefined && writer === HLC_PATTERN.exec(incomingClock)?.[3];
+}
+
+/**
  * Field-level last-writer-wins. A missing stored clock is older than any
  * incoming clock. Equal clocks keep the stored value (the incoming clock is
  * not strictly newer). Identical values produce no conflict, and neither does
  * replacing a value nobody wrote: a field without a clock still holds its
  * default (a field the creating mutation left out, or one added to the schema later).
+ * Nor does a device replacing its own earlier value (`sameWriter`).
  */
 export function mergeField(args: {
   entity: SyncConflictInfo['entity'];
@@ -35,7 +47,7 @@ export function mergeField(args: {
   const value = incomingWins ? args.incoming : args.stored;
   const clock = incomingWins ? args.incomingClock : (args.storedClock ?? args.incomingClock);
   const discardedValue = incomingWins ? args.stored : args.incoming;
-  if (args.storedClock == null || sameJson(value, discardedValue)) {
+  if (args.storedClock == null || sameWriter(args.storedClock, args.incomingClock) || sameJson(value, discardedValue)) {
     return { value, clock, discarded: null };
   }
   return {
@@ -61,7 +73,7 @@ export interface ChildClockRow {
 /**
  * Row-level last-writer-wins. The whole incoming row replaces the stored row
  * only when its `clientUpdatedAt` is strictly newer. A missing stored row is
- * an insert and records nothing.
+ * an insert and records nothing, and so is a row the same device wrote both times.
  */
 export function mergeChildRow<T extends ChildClockRow>(args: {
   entity: ChildEntity;
@@ -74,7 +86,7 @@ export function mergeChildRow<T extends ChildClockRow>(args: {
   const incomingWins = isNewerHlc(args.incoming.clientUpdatedAt, args.stored.clientUpdatedAt);
   const row = incomingWins ? args.incoming : args.stored;
   const loser = incomingWins ? args.stored : args.incoming;
-  if (sameJson(row, loser)) {
+  if (sameJson(row, loser) || sameWriter(args.stored.clientUpdatedAt, args.incoming.clientUpdatedAt)) {
     return { row, discarded: null };
   }
   return {

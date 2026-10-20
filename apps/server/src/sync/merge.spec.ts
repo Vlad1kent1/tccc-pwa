@@ -86,6 +86,31 @@ describe('mergeField', () => {
     expect(result.value).toBe('URGENT');
     expect(result.discarded).toBeNull();
   });
+
+  it('does not record a conflict when a device replaces, or replays over, its own value', () => {
+    const later = '1790000000000:0005:device-a';
+    const replaced = mergeField({
+      entity: 'card',
+      entityId: CARD,
+      field: 'evacPriority',
+      stored: null,
+      incoming: 'ROUTINE',
+      storedClock: OLD,
+      incomingClock: later,
+    });
+    expect(replaced).toEqual({ value: 'ROUTINE', clock: later, discarded: null });
+
+    const replayed = mergeField({
+      entity: 'card',
+      entityId: CARD,
+      field: 'evacPriority',
+      stored: 'ROUTINE',
+      incoming: null,
+      storedClock: later,
+      incomingClock: OLD,
+    });
+    expect(replayed).toEqual({ value: 'ROUTINE', clock: later, discarded: null });
+  });
 });
 
 describe('mergeChildRow', () => {
@@ -110,7 +135,7 @@ describe('mergeChildRow', () => {
   });
 
   it('keeps the stored row when the incoming clock is not newer', () => {
-    const incoming = { ...stored, clientUpdatedAt: OLD, pulseRate: 40 };
+    const incoming = { ...stored, clientUpdatedAt: '1789999999999:0001:device-b', pulseRate: 40 };
     const result = mergeChildRow({ entity: 'vitalSigns', stored, incoming });
 
     expect(result.row).toBe(stored);
@@ -120,6 +145,14 @@ describe('mergeChildRow', () => {
   it('inserts a row that the server has never seen', () => {
     const incoming = { ...stored, clientUpdatedAt: NEW };
     const result = mergeChildRow({ entity: 'vitalSigns', stored: null, incoming });
+
+    expect(result.row).toBe(incoming);
+    expect(result.discarded).toBeNull();
+  });
+
+  it('replaces a row the same device wrote without recording a conflict', () => {
+    const incoming = { ...stored, clientUpdatedAt: '1790000000000:0005:device-a', pulseRate: 120 };
+    const result = mergeChildRow({ entity: 'vitalSigns', stored, incoming });
 
     expect(result.row).toBe(incoming);
     expect(result.discarded).toBeNull();
@@ -214,6 +247,21 @@ describe('fast path (base version matches)', () => {
     expect(result.discarded).toEqual([
       expect.objectContaining({ kept: 'URGENT', discarded: 'ROUTINE', incomingLost: false }),
     ]);
+  });
+
+  it('records nothing on the slow path when the device replaces the value it created the card with', () => {
+    const result = mergeCardPatch({
+      cardId: CARD,
+      stored: { evacPriority: null },
+      storedClock: { evacPriority: OLD },
+      patch: { evacPriority: 'ROUTINE' },
+      changedFields: ['evacPriority'],
+      hlc: '1790000000000:0005:device-a',
+      fastPath: false,
+    });
+
+    expect(result.columns).toEqual({ evacPriority: 'ROUTINE' });
+    expect(result.discarded).toEqual([]);
   });
 
   it('does not delete a card whose restore is newer than the delete', () => {
