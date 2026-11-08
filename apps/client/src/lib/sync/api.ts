@@ -18,11 +18,14 @@ const TUNNEL_HEADERS = {
 
 export class ApiError extends Error {
   readonly status: number;
+  /** Parsed JSON body of the error response, or null when it had none. */
+  readonly body: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, body: unknown = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -78,7 +81,8 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
       },
     });
     if (!response.ok) {
-      throw new ApiError(response.status, `${init.method ?? "GET"} ${path} failed (${response.status})`);
+      const body = await response.json().catch(() => null);
+      throw new ApiError(response.status, `${init.method ?? "GET"} ${path} failed (${response.status})`, body);
     }
     if (response.status === 204) return null;
     return (await response.json()) as unknown;

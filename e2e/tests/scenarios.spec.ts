@@ -1,6 +1,7 @@
 import { newId } from "@tccc/shared";
 import type { Page } from "@playwright/test";
 import { API_HEADERS, API_ORIGIN, expect, test, type ServerCounts } from "../src/fixtures";
+import { deleteCard } from "../src/database";
 import { attachMetrics } from "../src/metrics";
 import {
   boot,
@@ -251,12 +252,15 @@ test("T-07 the later evac priority wins and a conflict is stored", async ({ twoD
   await choosePriority(a, id, "Urgent");
   await b.waitForTimeout(1200);
   await choosePriority(b, id, "Priority");
-  await reconnect(a);
+  // A's older edit lands last, so a server that lets the last arrival win fails here.
   await reconnect(b);
-  await expect.poll(async () => (await cardNamed(await serverCounts(name), name))?.evacPriority, { timeout: 30_000 }).toBe("PRIORITY");
+  await expect.poll(() => outboxCount(b), { timeout: 30_000 }).toBe(0);
+  await reconnect(a);
+  await expect.poll(() => outboxCount(a), { timeout: 30_000 }).toBe(0);
   const counts = await serverCounts(name);
-  const card = counts.cards[0]!;
-  expect(counts.conflicts.some((conflict) => conflict.cardId === card.id && conflict.field === "evacPriority")).toBe(true);
+  const card = await cardNamed(counts, name);
+  expect(card?.evacPriority).toBe("PRIORITY");
+  expect(counts.conflicts.some((conflict) => conflict.cardId === card?.id && conflict.field === "evacPriority")).toBe(true);
   for (const device of [a, b]) {
     await waitForListed(device, name);
   }
@@ -311,18 +315,23 @@ test("T-08 a later vitals edit beats an earlier delete", async ({ twoDevices, se
   await expect(vitalsB.getByRole("button", { name: "Remove" })).toBeVisible();
   await a.context().setOffline(true);
   await b.context().setOffline(true);
+  // Counted before each edit: an entry left over from earlier would let the wait pass early.
+  const queuedOnA = await outboxCount(a);
   await vitalsA.getByRole("button", { name: "Remove" }).click();
+  await expect.poll(() => outboxCount(a)).toBeGreaterThan(queuedOnA);
   await b.waitForTimeout(1200);
   const pulse = vitalsB.getByRole("textbox", { name: "Pulse", exact: true });
+  const queuedOnB = await outboxCount(b);
   await pulse.fill("99");
   await pulse.blur();
-  await b.waitForTimeout(700);
-  await reconnect(a);
+  await expect.poll(() => outboxCount(b)).toBeGreaterThan(queuedOnB);
+  // A's older delete lands last, so a server that lets the last arrival win fails here.
   await reconnect(b);
-  await expect.poll(async () => {
-    const card = await cardNamed(await serverCounts(name), name);
-    return card?.vitalSigns.find((vital) => vital.deletedAt == null)?.pulseRate ?? null;
-  }, { timeout: 30_000 }).toBe(99);
+  await expect.poll(() => outboxCount(b), { timeout: 30_000 }).toBe(0);
+  await reconnect(a);
+  await expect.poll(() => outboxCount(a), { timeout: 30_000 }).toBe(0);
+  const card = await cardNamed(await serverCounts(name), name);
+  expect(card?.vitalSigns.find((vital) => vital.deletedAt == null)?.pulseRate).toBe(99);
 });
 
 test("T-10 a card syncs on Fast 3G", async ({ page, browserName, setOffline: offline, throttle, serverCounts }) => {
@@ -375,22 +384,30 @@ test("T-14 a clock one hour ahead still orders by HLC", async ({ twoDevices, ser
   await waitForStartupSync(b);
   await b.context().setOffline(true);
   await b.clock.setFixedTime(Date.now() + 60 * 60 * 1000);
-  // editField advances the fixed clock only long enough for the debounce, and
-  // does not return until IndexedDB has the new name.
-  await editField(b, id, "A", "Last name", `${name}-future`);
-  const futureClock = (await readLocalCards(b)).find((card) => card.id === id)?.fieldClock.lastName ?? "";
-  expect(Number(futureClock.split(":")[0]), `B stamped ${futureClock}, not a time an hour ahead`).toBeGreaterThan(
-    Date.now() + 30 * 60 * 1000,
-  );
-  await b.clock.setFixedTime(Date.now());
-  await reconnect(b);
-  await expect.poll(async () => (await cardNamed(await serverCounts(`${name}-future`), `${name}-future`)) != null, {
-    timeout: 20_000,
-  }).toBe(true);
-  await editField(a, id, "A", "Last name", `${name}-past`);
-  await reconnect(a);
-  await expect.poll(async () => (await serverCounts(`${name}-future`)).cards.length, { timeout: 20_000 }).toBe(1);
-  expect((await serverCounts(`${name}-past`)).cards).toHaveLength(0);
+  try {
+    // editField advances the fixed clock only long enough for the debounce, and
+    // does not return until IndexedDB has the new name.
+    await editField(b, id, "A", "Last name", `${name}-future`);
+    const futureClock = (await readLocalCards(b)).find((card) => card.id === id)?.fieldClock.lastName ?? "";
+    expect(Number(futureClock.split(":")[0]), `B stamped ${futureClock}, not a time an hour ahead`).toBeGreaterThan(
+      Date.now() + 30 * 60 * 1000,
+    );
+    await b.clock.setFixedTime(Date.now());
+    await reconnect(b);
+    await expect.poll(async () => (await cardNamed(await serverCounts(`${name}-future`), `${name}-future`)) != null, {
+      timeout: 20_000,
+    }).toBe(true);
+    await editField(a, id, "A", "Last name", `${name}-past`);
+    await reconnect(a);
+    // Wait for A's older edit to reach the server: asserting before it lands passes even if it wins.
+    await expect.poll(() => outboxCount(a), { timeout: 30_000 }).toBe(0);
+    const counts = await serverCounts(name);
+    expect(counts.cards.map((card) => card.lastName)).toEqual([`${name}-future`]);
+  } finally {
+    // Every device that pulls this card moves its clock an hour ahead. Later tests that
+    // order two offline edits by real time would then see them ordered by counter.
+    await deleteCard(id);
+  }
 });
 
 test("T-15 an invalid vitals payload is rejected without blocking a valid edit", async ({ page, serverCounts }) => {
@@ -415,7 +432,10 @@ test("T-15 an invalid vitals payload is rejected without blocking a valid edit",
       request.onerror = () => reject(request.error);
     });
     const deviceId = String(meta.find((entry) => entry.key === "deviceId")?.value);
-    const wall = String(Date.now()).padStart(13, "0");
+    // The device clock can run ahead of Date.now(): pulls observe every clock on the server,
+    // including one a device with a fast clock wrote. Stamped before it, the note loses to the card's.
+    const hlcState = meta.find((entry) => entry.key === "hlcState")?.value as { wallTime: number } | undefined;
+    const wall = String(Math.max(Date.now(), (hlcState?.wallTime ?? 0) + 1)).padStart(13, "0");
     const vitalId = crypto.randomUUID();
     const measuredAt = new Date().toISOString();
     const badHlc = `${wall}:0002:${deviceId}`;

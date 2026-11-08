@@ -15,7 +15,7 @@ export const E2E_DATABASE_URL =
 
 interface PgClient {
   connect: () => Promise<void>;
-  query: (sql: string) => Promise<unknown>;
+  query: (sql: string, values?: unknown[]) => Promise<unknown>;
   end: () => Promise<void>;
 }
 
@@ -62,16 +62,25 @@ export function migrateDatabase(): void {
   }
 }
 
-/** Runs apps/server/prisma/wipe.sql: every row goes, the schema and migration history stay. */
-export async function wipeDatabase(): Promise<void> {
+async function withClient(work: (client: PgClient) => Promise<unknown>): Promise<void> {
   assertNotDevDatabase();
   const require = createRequire(path.join(root, "apps/server/package.json"));
   const { Client } = require("pg") as { Client: new (config: { connectionString: string }) => PgClient };
   const client = new Client({ connectionString: E2E_DATABASE_URL });
   await client.connect();
   try {
-    await client.query(readFileSync(path.join(root, "apps/server/prisma/wipe.sql"), "utf8"));
+    await work(client);
   } finally {
     await client.end();
   }
+}
+
+/** Runs apps/server/prisma/wipe.sql: every row goes, the schema and migration history stay. */
+export function wipeDatabase(): Promise<void> {
+  return withClient((client) => client.query(readFileSync(path.join(root, "apps/server/prisma/wipe.sql"), "utf8")));
+}
+
+/** Deletes one card; its child rows and conflicts cascade. */
+export function deleteCard(id: string): Promise<void> {
+  return withClient((client) => client.query('DELETE FROM "CasualtyCard" WHERE id = $1', [id]));
 }

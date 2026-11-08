@@ -34,6 +34,8 @@ export function TacticalBoard({ mode }: { mode: "new" | "edit" }) {
   const router = useRouter();
   const [id, setId] = useState<string | null>(null);
   const [ready, setReady] = useState(mode === "new");
+  // False in the prerendered page: a field typed into before hydration never reaches React.
+  const [hydrated, setHydrated] = useState(false);
   const card = useLocalCard(ready ? id : null);
   const [draft] = useState(createDraftBoard);
   // A new casualty edits the draft until it creates its card; the draft then becomes that card's store.
@@ -42,6 +44,7 @@ export function TacticalBoard({ mode }: { mode: "new" | "edit" }) {
   useLayoutEffect(() => {
     setId(new URLSearchParams(window.location.search).get("id"));
     setReady(true);
+    setHydrated(true);
   }, []);
 
   useEffect(
@@ -68,7 +71,9 @@ export function TacticalBoard({ mode }: { mode: "new" | "edit" }) {
 
   return (
     <BoardProvider store={store}>
-      <main className={`mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-4 ${mode === "new" ? "pb-[calc(6rem+env(safe-area-inset-bottom))]" : "pb-16"}`}>
+      <main
+        data-hydrated={hydrated ? "" : undefined}
+        className={`mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-4 ${mode === "new" ? "pb-[calc(6rem+env(safe-area-inset-bottom))]" : "pb-16"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">{mode === "edit" ? t("card.editTitle") : t("wizard.title")}</h1>
         {id ? (

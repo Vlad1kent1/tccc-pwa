@@ -7,5 +7,8 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.e2e-spec.ts'],
+    // Spec files run in parallel against the one test database, so card writes from all
+    // of them wait their turn on the changeSeq advisory lock.
+    testTimeout: 15_000,
   },
 });

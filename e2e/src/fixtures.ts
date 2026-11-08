@@ -7,6 +7,12 @@ const CLIENT_ORIGIN = "http://127.0.0.1:3100";
 export const E2E_UNIT_TOKEN = "e2e-unit-token-0000000000000001";
 /** For direct API calls from the test runner. */
 export const API_HEADERS = { Authorization: `Bearer ${E2E_UNIT_TOKEN}` };
+/**
+ * The API server closes a keep-alive socket after 5 s idle. A call sent on it as it
+ * closes fails with ECONNRESET, and `expect.poll` does not retry a thrown error. The
+ * fixture calls below are safe to repeat.
+ */
+const RESET_RETRIES = { maxRetries: 3 } as const;
 
 /** Every page starts with the unit token saved, as if the medic had entered it in Settings. */
 async function withUnitToken(context: BrowserContext): Promise<BrowserContext> {
@@ -40,7 +46,7 @@ async function pullAll(api: APIRequestContext): Promise<CountedCard[]> {
   const cards: CountedCard[] = [];
   let since = "0";
   for (let page = 0; page < 50; page += 1) {
-    const response = await api.get(`/api/sync/pull?since=${since}&limit=500`);
+    const response = await api.get(`/api/sync/pull?since=${since}&limit=500`, RESET_RETRIES);
     if (!response.ok()) {
       throw new Error(`pull failed (${response.status()})`);
     }
@@ -115,7 +121,7 @@ export const test = base.extend<{
     const api = await playwright.request.newContext({ baseURL: API_ORIGIN, extraHTTPHeaders: API_HEADERS });
     await use(async (lastNamePrefix) => {
       const cards = await pullAll(api);
-      const conflictsResponse = await api.get("/api/sync/conflicts");
+      const conflictsResponse = await api.get("/api/sync/conflicts", RESET_RETRIES);
       if (!conflictsResponse.ok()) {
         throw new Error(`conflicts failed (${conflictsResponse.status()})`);
       }
@@ -130,7 +136,7 @@ export const test = base.extend<{
   setChaos: async ({ playwright }, use) => {
     const api = await playwright.request.newContext({ baseURL: API_ORIGIN, extraHTTPHeaders: API_HEADERS });
     await use(async (patch) => {
-      const response = await api.post("/api/chaos", { data: patch });
+      const response = await api.post("/api/chaos", { data: patch, ...RESET_RETRIES });
       if (!response.ok()) {
         throw new Error(`chaos update failed (${response.status()}) ${await response.text()}`);
       }

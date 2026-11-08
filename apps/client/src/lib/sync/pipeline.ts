@@ -262,15 +262,54 @@ function setStatus(db: TcccDB, batch: OutboxMutation[], status: OutboxMutation["
     });
 }
 
-function isTooLarge(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 413;
+/**
+ * Statuses that refuse a whole request for what it carries, with the error a mutation
+ * gets when it is refused on its own. The request is split to find that mutation.
+ */
+const REFUSED_CONTENT: Partial<Record<number, string>> = {
+  400: "VALIDATION: the server refused this change as malformed (400)",
+  413: "TOO_LARGE: the server refused this change as too large (413)",
+};
+
+interface ValidationIssue {
+  path?: unknown[];
+  message?: unknown;
+}
+
+/** The validation issues of a 400 from the API's Zod pipe, or none. */
+function validationIssues(body: unknown): ValidationIssue[] {
+  const errors = (body as { errors?: unknown } | null)?.errors;
+  return Array.isArray(errors) ? (errors as ValidationIssue[]) : [];
+}
+
+/**
+ * True when every issue points into `mutations`, so one of them is to blame. A 400 about
+ * the request itself (a corrupt device id, a proxy, a newer server's schema) does not.
+ */
+function blamesMutations(body: unknown): boolean {
+  const issues = validationIssues(body);
+  return issues.length > 0 && issues.every((issue) => issue.path?.[0] === "mutations");
+}
+
+/**
+ * The error a mutation refused on its own is failed with, or undefined when the refusal
+ * is not about what the request carries. A 400 that does not blame the mutations falls
+ * through: the batch stays queued, as for any other refusal, until the cause is gone.
+ */
+function refusalMessage(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  const message = REFUSED_CONTENT[error.status];
+  if (error.status !== 400 || !message) return message;
+  if (!blamesMutations(error.body)) return undefined;
+  const detail = validationIssues(error.body)[0]?.message;
+  return typeof detail === "string" ? `${message}: ${detail}` : message;
 }
 
 /**
  * Pushes queued mutations in requests of at most `MAX_PUSH_MUTATIONS` and
- * `MAX_PUSH_BYTES`. A request the server still refuses as too large (413) is
- * halved and retried; a single mutation that is too large on its own is marked
- * failed so the rest of the outbox keeps moving. `onRetry` runs after a network or
+ * `MAX_PUSH_BYTES`. A request the server refuses for its content (a 400 that blames
+ * the mutations, a 413) is halved and retried; a single mutation refused on its own is
+ * marked failed so the rest of the outbox keeps moving. `onRetry` runs after a network or
  * 5xx failure (`"retry"`: the push stopped) and when the server answered but could not apply
  * some mutations (`"partial"`: those wait in the queue, everything else went through).
  */
@@ -304,7 +343,8 @@ export async function pushOutbox(
       await rememberServerTime(db, response.serverTime);
       deferred.push(...(await applyResults(db, response.results, batch)));
     } catch (error) {
-      if (isTooLarge(error)) {
+      const refusal = refusalMessage(error);
+      if (refusal) {
         await setStatus(db, batch, "queued");
         if (batch.length > 1) {
           const middle = Math.ceil(batch.length / 2);
@@ -314,7 +354,7 @@ export async function pushOutbox(
         await db.outbox.where("mutationId").equals(batch[0]!.mutationId).modify((entry) => {
           entry.status = "failed";
           entry.attempts += 1;
-          entry.lastError = "TOO_LARGE: the server refused this change as too large (413)";
+          entry.lastError = refusal;
         });
         continue;
       }

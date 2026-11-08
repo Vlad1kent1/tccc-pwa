@@ -133,31 +133,24 @@ export class SyncService {
 
   async resolve(id: string, body: ResolveConflict): Promise<{ conflict: ConflictRecord; card: CasualtyCard }> {
     return this.prisma.$transaction(async (tx) => {
-      const conflict = await tx.syncConflict.findUnique({ where: { id } });
-      if (!conflict) {
-        throw new NotFoundException(`Conflict ${id} not found`);
-      }
-      if (conflict.resolvedAt) {
-        throw new ConflictException(`Conflict ${id} is already resolved`);
-      }
+      const found = await tx.syncConflict.findUnique({ where: { id }, select: { cardId: true } });
+      if (!found) throw new NotFoundException(`Conflict ${id} not found`);
 
-      await this.lockCard(tx, conflict.cardId);
-      const card = await this.loadCard(tx, conflict.cardId);
-      if (!card) {
-        throw new NotFoundException(`Card ${conflict.cardId} not found`);
-      }
+      await this.lockCard(tx, found.cardId);
 
-      let current = card;
-      if (body.choice === 'discarded') {
-        current = await this.applyDiscarded(tx, card, conflict);
-      }
-
-      const resolved = await tx.syncConflict.update({
-        where: { id },
+      // Claimed after the lock: a resolve that committed first leaves nothing to update here.
+      const [conflict] = await tx.syncConflict.updateManyAndReturn({
+        where: { id, resolvedAt: null },
         data: { resolvedAt: new Date(), resolvedBy: body.choice },
       });
-      const fresh = body.choice === 'discarded' ? current : await this.loadCard(tx, card.id);
-      return { conflict: toConflictRecord(resolved), card: toCardDto(fresh ?? current) };
+      if (!conflict) throw new ConflictException(`Conflict ${id} is already resolved`);
+
+      const card = await this.loadCard(tx, conflict.cardId);
+      if (!card) throw new NotFoundException(`Card ${conflict.cardId} not found`);
+
+      const current = body.choice === 'discarded' ? await this.applyDiscarded(tx, card, conflict) : card;
+
+      return { conflict: toConflictRecord(conflict), card: toCardDto(current) };
     }, TX_OPTIONS);
   }
 
@@ -292,9 +285,11 @@ export class SyncService {
 
     const mutation = parsed.data;
     await this.lockCard(tx, mutation.cardId);
+    // Before the card write: from `nextChangeSeq` to COMMIT every card write in the system
+    // waits on one advisory lock, so only the card update and `remember` run inside it.
+    await this.touchDevice(tx, deviceId);
     const card = await this.loadCard(tx, mutation.cardId);
     const outcome = await this.applyMutation(tx, deviceId, mutation, card);
-    await this.touchDevice(tx, deviceId);
     await this.remember(tx, deviceId, mutation.mutationId, outcome);
     return outcome;
   }
@@ -368,8 +363,9 @@ export class SyncService {
       hlc: mutation.hlc,
       fastPath,
     });
+    // Conflicts first, the card last: the card write takes the changeSeq lock.
+    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, card.id, discarded);
     const saved = await this.saveCard(tx, card, columns, clock);
-    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
 
@@ -390,6 +386,7 @@ export class SyncService {
       fastPath,
     });
 
+    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, card.id, discarded);
     const saved = await tx.casualtyCard.update({
       where: { id: card.id },
       data: {
@@ -400,7 +397,6 @@ export class SyncService {
       },
       include: cardWithChildren,
     });
-    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
 
@@ -427,8 +423,8 @@ export class SyncService {
       await this.writeChild(tx, mutation.entity, stored ? { ...write, id: stored.id } : write);
     }
 
+    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, card.id, discarded);
     const saved = await this.bumpCard(tx, card);
-    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
 
@@ -455,8 +451,8 @@ export class SyncService {
       await this.writeChild(tx, mutation.entity, write);
     }
 
+    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, card.id, discarded);
     const saved = await this.bumpCard(tx, card);
-    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, saved.id, discarded);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
 

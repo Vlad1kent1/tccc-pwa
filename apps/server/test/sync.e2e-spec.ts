@@ -167,6 +167,108 @@ describe('sync API', () => {
     expect(await prisma.syncConflict.count({ where: { cardId } })).toBe(1);
   });
 
+  it('lets only one of two simultaneous resolves of a conflict through', async () => {
+    const cardId = newId();
+    const push = (deviceId: string, mutation: Record<string, unknown>) =>
+      request(app.getHttpServer())
+        .post('/api/sync/push')
+        .send({ deviceId, mutations: [{ mutationId: newId(), cardId, op: 'card.upsert', changedFields: ['evacPriority'], ...mutation }] })
+        .expect(201);
+    await push(DEVICE_A, { baseVersion: null, patch: { evacPriority: 'ROUTINE' }, hlc: hlc(1_790_000_010_000, DEVICE_A) });
+    await push(DEVICE_A, { baseVersion: 1, patch: { evacPriority: 'URGENT' }, hlc: hlc(1_790_000_011_000, DEVICE_A) });
+    const merged = await push(DEVICE_B, { baseVersion: 1, patch: { evacPriority: 'PRIORITY' }, hlc: hlc(1_790_000_012_000, DEVICE_B) });
+    const conflictId = merged.body.results[0].conflicts[0].id as string;
+
+    const resolve = (choice: 'kept' | 'discarded') =>
+      request(app.getHttpServer()).post(`/api/sync/conflicts/${conflictId}/resolve`).send({ choice });
+
+    // Hold the card lock until both requests wait on it, so they always overlap: each has
+    // read the unresolved conflict before either can resolve it.
+    let release!: () => void;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    let holderPid: number | null = null;
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "CasualtyCard" WHERE id = ${cardId}::uuid FOR UPDATE`;
+        holderPid = (await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`)[0]!.pid;
+        await gate;
+      },
+      { maxWait: 5_000, timeout: 10_000 },
+    );
+    await vi.waitFor(() => expect(holderPid).not.toBeNull());
+    const both = Promise.all([resolve('kept'), resolve('discarded')]);
+    // The first request waits on the holder; the second queues behind the first one's tuple
+    // lock, so count the whole chain of waiters that leads back to the holder.
+    await vi.waitFor(
+      async () => {
+        const [row] = await prisma.$queryRaw<{ waiting: number }[]>`
+          WITH RECURSIVE blocked(pid) AS (
+            SELECT pid FROM pg_stat_activity WHERE ${holderPid}::int = ANY(pg_blocking_pids(pid))
+            UNION
+            SELECT activity.pid FROM pg_stat_activity activity
+            JOIN blocked ON blocked.pid = ANY(pg_blocking_pids(activity.pid))
+          )
+          SELECT count(*)::int AS waiting FROM blocked
+        `;
+        expect(row?.waiting).toBe(2);
+      },
+      { timeout: 3_000, interval: 50 },
+    );
+    release();
+    await holder;
+    const [kept, discarded] = await both;
+
+    expect([kept.status, discarded.status].sort((a, b) => a - b)).toEqual([201, 409]);
+    const winner = kept.status === 201 ? 'kept' : 'discarded';
+    const stored = await prisma.syncConflict.findUniqueOrThrow({ where: { id: conflictId } });
+    expect(stored.resolvedBy).toBe(winner);
+    const card = await prisma.casualtyCard.findUniqueOrThrow({ where: { id: cardId } });
+    expect(card.evacPriority).toBe(winner === 'kept' ? 'PRIORITY' : 'URGENT');
+  });
+
+  it('commits parallel pushes from many devices without a busy-database failure', async () => {
+    // Every card write waits its turn on the changeSeq advisory lock; a long wait there
+    // ends in lock_timeout and a 503 for the whole push.
+    const devices = Array.from({ length: 20 }, () => newId());
+    try {
+      const started = Date.now();
+      const responses = await Promise.all(
+        devices.map((deviceId, index) =>
+          request(app.getHttpServer())
+            .post('/api/sync/push')
+            .send({
+              deviceId,
+              mutations: [
+                {
+                  mutationId: newId(),
+                  cardId: newId(),
+                  op: 'card.upsert',
+                  baseVersion: null,
+                  patch: { lastName: `Parallel-${index}` },
+                  changedFields: ['lastName'],
+                  hlc: hlc(1_790_000_020_000 + index, deviceId),
+                },
+              ],
+            }),
+        ),
+      );
+      const elapsedMs = Date.now() - started;
+
+      expect(responses.map((response) => response.status)).toEqual(devices.map(() => 201));
+      const results = responses.map((response) => (response.body as PushResponse).results[0]!);
+      expect(results.every((result) => result.status === 'applied')).toBe(true);
+      const seqs = new Set(results.map((result) => (result.status === 'rejected' ? null : result.card.changeSeq)));
+      expect(seqs.size).toBe(devices.length);
+      expect(elapsedMs).toBeLessThan(10_000);
+    } finally {
+      await prisma.processedMutation.deleteMany({ where: { deviceId: { in: devices } } });
+      await prisma.casualtyCard.deleteMany({ where: { createdByDeviceId: { in: devices } } });
+      await prisma.device.deleteMany({ where: { id: { in: devices } } });
+    }
+  });
+
   it('drops an older offline edit even when its base version matches', async () => {
     const cardId = newId();
     const push = (deviceId: string, mutation: Record<string, unknown>) =>

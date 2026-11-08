@@ -1,4 +1,4 @@
-import { expect, type BrowserContext, type Page } from "@playwright/test";
+import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 /**
  * Contexts whose test installed a Playwright clock. Advancing a clock that was never
@@ -71,6 +71,16 @@ export async function boot(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Casualties" })).toBeVisible();
 }
 
+/**
+ * The precached page shows a visible, enabled field before React hydrates it. Text
+ * filled in before then stays on screen but never reaches React, so nothing is saved;
+ * WebKit hydrates slowly enough to hit this. The board marks its `<main>` with
+ * `data-hydrated` once React has taken over the page.
+ */
+async function waitForHydration(field: Locator): Promise<void> {
+  await expect(field.page().locator("main[data-hydrated]").filter({ has: field })).toBeVisible({ timeout: 15_000 });
+}
+
 export async function createCasualty(page: Page, lastName: string): Promise<string> {
   // A full unload drops the wizard's in-memory "create in progress" card so the
   // next name cannot overwrite the one just saved.
@@ -84,6 +94,7 @@ export async function createCasualty(page: Page, lastName: string): Promise<stri
   const lastNameField = page.getByTestId("patient-name-input");
   await expect(lastNameField).toBeVisible({ timeout: 30_000 });
   await expect(lastNameField).toBeEnabled({ timeout: 15_000 });
+  await waitForHydration(lastNameField);
   await lastNameField.fill(lastName);
   await lastNameField.blur();
   // history.replaceState updates the query without a document navigation.

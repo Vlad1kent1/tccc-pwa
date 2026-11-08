@@ -499,4 +499,51 @@ describe("pushing a mass-casualty backlog", () => {
       expect.objectContaining({ mutationId: big!.mutationId, status: "failed", attempts: 1, lastError: expect.stringContaining("TOO_LARGE") }),
     ]);
   });
+
+  it("fails only the mutation that makes a request malformed (400) and pushes the rest", async () => {
+    await queueCards(4);
+    const [, bad] = await db.outbox.orderBy("seq").toArray();
+    pushMutations.mockImplementation((deviceId: string, mutations: Mutation[]) => {
+      const index = mutations.findIndex((mutation) => mutation.mutationId === bad!.mutationId);
+      if (index === -1) return applyAll(deviceId, mutations);
+      // The body the API's Zod pipe sends: the issue points at the bad mutation.
+      const body = { message: "Validation failed", errors: [{ path: ["mutations", index, "mutationId"], message: "Invalid UUID" }] };
+      return Promise.reject(new ApiError(400, "POST /api/sync/push failed (400)", body));
+    });
+
+    expect(await pushOutbox(db)).toBe("ok");
+
+    expect(await db.outbox.toArray()).toEqual([
+      expect.objectContaining({
+        mutationId: bad!.mutationId,
+        status: "failed",
+        attempts: 1,
+        lastError: expect.stringMatching(/^VALIDATION: .*: Invalid UUID$/),
+      }),
+    ]);
+  });
+
+  it("keeps the batch queued when a 400 is about the request, not a mutation", async () => {
+    await queueCards(4);
+    // A corrupt device id, a proxy, or a newer server's request schema: no mutation is to blame.
+    const body = { message: "Validation failed", errors: [{ path: ["deviceId"], message: "Invalid UUID" }] };
+    pushMutations.mockRejectedValue(new ApiError(400, "POST /api/sync/push failed (400)", body));
+
+    await expect(pushOutbox(db)).rejects.toMatchObject({ status: 400 });
+
+    expect(pushMutations).toHaveBeenCalledTimes(1);
+    const entries = await db.outbox.toArray();
+    expect(entries).toHaveLength(4);
+    expect(entries.every((entry) => entry.status === "queued" && entry.attempts === 0)).toBe(true);
+  });
+
+  it("keeps the batch queued when a 400 has no body to blame a mutation with", async () => {
+    await queueCards(2);
+    pushMutations.mockRejectedValue(new ApiError(400, "POST /api/sync/push failed (400)"));
+
+    await expect(pushOutbox(db)).rejects.toMatchObject({ status: 400 });
+
+    expect(pushMutations).toHaveBeenCalledTimes(1);
+    expect((await db.outbox.toArray()).every((entry) => entry.status === "queued")).toBe(true);
+  });
 });
