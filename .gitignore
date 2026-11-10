@@ -68,7 +68,17 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 *.launch
 .settings/
 *.sublime-workspace
-.claude/
+# Claude Code: share the project config, keep personal settings and hook state local.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/skills/
+!.claude/agents/
+apps/*/.claude/
+packages/*/.claude/
+e2e/.claude/
+# Re-created by `next dev`; its guidance now lives in apps/client/CLAUDE.md.
+apps/client/AGENTS.md
 .cursor/
 .agents/
 .devin/
