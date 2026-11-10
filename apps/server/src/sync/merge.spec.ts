@@ -98,7 +98,11 @@ describe('mergeField', () => {
       storedClock: OLD,
       incomingClock: later,
     });
-    expect(replaced).toEqual({ value: 'ROUTINE', clock: later, discarded: null });
+    expect(replaced).toEqual({
+      value: 'ROUTINE',
+      clock: later,
+      discarded: null,
+    });
 
     const replayed = mergeField({
       entity: 'card',
@@ -109,7 +113,11 @@ describe('mergeField', () => {
       storedClock: later,
       incomingClock: OLD,
     });
-    expect(replayed).toEqual({ value: 'ROUTINE', clock: later, discarded: null });
+    expect(replayed).toEqual({
+      value: 'ROUTINE',
+      clock: later,
+      discarded: null,
+    });
   });
 });
 
@@ -135,7 +143,11 @@ describe('mergeChildRow', () => {
   });
 
   it('keeps the stored row when the incoming clock is not newer', () => {
-    const incoming = { ...stored, clientUpdatedAt: '1789999999999:0001:device-b', pulseRate: 40 };
+    const incoming = {
+      ...stored,
+      clientUpdatedAt: '1789999999999:0001:device-b',
+      pulseRate: 40,
+    };
     const result = mergeChildRow({ entity: 'vitalSigns', stored, incoming });
 
     expect(result.row).toBe(stored);
@@ -144,14 +156,22 @@ describe('mergeChildRow', () => {
 
   it('inserts a row that the server has never seen', () => {
     const incoming = { ...stored, clientUpdatedAt: NEW };
-    const result = mergeChildRow({ entity: 'vitalSigns', stored: null, incoming });
+    const result = mergeChildRow({
+      entity: 'vitalSigns',
+      stored: null,
+      incoming,
+    });
 
     expect(result.row).toBe(incoming);
     expect(result.discarded).toBeNull();
   });
 
   it('replaces a row the same device wrote without recording a conflict', () => {
-    const incoming = { ...stored, clientUpdatedAt: '1790000000000:0005:device-a', pulseRate: 120 };
+    const incoming = {
+      ...stored,
+      clientUpdatedAt: '1790000000000:0005:device-a',
+      pulseRate: 120,
+    };
     const result = mergeChildRow({ entity: 'vitalSigns', stored, incoming });
 
     expect(result.row).toBe(incoming);
@@ -176,7 +196,10 @@ describe('mergeTombstone', () => {
 
     expect(result.row.deletedAt).toBe('2026-09-24T12:00:00.000Z');
     expect(result.row.clientUpdatedAt).toBe(NEW);
-    expect(result.discarded).toMatchObject({ field: 'deletedAt', discarded: null });
+    expect(result.discarded).toMatchObject({
+      field: 'deletedAt',
+      discarded: null,
+    });
   });
 
   it('keeps the row when an edit is newer than the tombstone', () => {
@@ -212,9 +235,17 @@ describe('fast path (base version matches)', () => {
     });
 
     expect(result.columns).toEqual({ notes: 'new note' });
-    expect(result.clock).toEqual({ allergies: NEW, notes: '1790000000000:0001:device-c' });
+    expect(result.clock).toEqual({
+      allergies: NEW,
+      notes: '1790000000000:0001:device-c',
+    });
     expect(result.discarded).toEqual([
-      expect.objectContaining({ field: 'allergies', kept: 'Penicillin', discarded: 'NKA', incomingLost: true }),
+      expect.objectContaining({
+        field: 'allergies',
+        kept: 'Penicillin',
+        discarded: 'NKA',
+        incomingLost: true,
+      }),
     ]);
   });
 
@@ -245,7 +276,11 @@ describe('fast path (base version matches)', () => {
     });
 
     expect(result.discarded).toEqual([
-      expect.objectContaining({ kept: 'URGENT', discarded: 'ROUTINE', incomingLost: false }),
+      expect.objectContaining({
+        kept: 'URGENT',
+        discarded: 'ROUTINE',
+        incomingLost: false,
+      }),
     ]);
   });
 
@@ -294,18 +329,50 @@ describe('fast path (base version matches)', () => {
   });
 
   it('keeps a newer child row over an older upsert', () => {
-    const stored = { id: ROW, clientUpdatedAt: NEW, deletedAt: null, pulseRate: 120 };
-    const incoming = { id: ROW, clientUpdatedAt: OLD, deletedAt: null, pulseRate: 60 };
-    const result = mergeChildUpsert({ entity: 'vitalSigns', stored, incoming, fastPath: true });
+    const stored = {
+      id: ROW,
+      clientUpdatedAt: NEW,
+      deletedAt: null,
+      pulseRate: 120,
+    };
+    const incoming = {
+      id: ROW,
+      clientUpdatedAt: OLD,
+      deletedAt: null,
+      pulseRate: 60,
+    };
+    const result = mergeChildUpsert({
+      entity: 'vitalSigns',
+      stored,
+      incoming,
+      fastPath: true,
+    });
 
     expect(result.write).toBeNull();
-    expect(result.discarded).toEqual([expect.objectContaining({ field: 'row', incomingLost: true })]);
+    expect(result.discarded).toEqual([
+      expect.objectContaining({ field: 'row', incomingLost: true }),
+    ]);
   });
 
   it('writes a newer child row silently on the fast path', () => {
-    const stored = { id: ROW, clientUpdatedAt: OLD, deletedAt: null, pulseRate: 120 };
-    const incoming = { id: ROW, clientUpdatedAt: NEW, deletedAt: null, pulseRate: 60 };
-    const result = mergeChildUpsert({ entity: 'vitalSigns', stored, incoming, fastPath: true });
+    const stored = {
+      id: ROW,
+      clientUpdatedAt: OLD,
+      deletedAt: null,
+      pulseRate: 120,
+    };
+    const incoming = {
+      id: ROW,
+      clientUpdatedAt: NEW,
+      deletedAt: null,
+      pulseRate: 60,
+    };
+    const result = mergeChildUpsert({
+      entity: 'vitalSigns',
+      stored,
+      incoming,
+      fastPath: true,
+    });
 
     expect(result.write).toBe(incoming);
     expect(result.discarded).toEqual([]);
@@ -313,9 +380,17 @@ describe('fast path (base version matches)', () => {
 
   it('ignores an older delete of a row that was edited since', () => {
     const stored = { id: ROW, clientUpdatedAt: NEW, deletedAt: null };
-    const result = mergeChildDelete({ entity: 'fluid', stored, deletedAt: '2026-09-24T12:00:00.000Z', hlc: OLD, fastPath: true });
+    const result = mergeChildDelete({
+      entity: 'fluid',
+      stored,
+      deletedAt: '2026-09-24T12:00:00.000Z',
+      hlc: OLD,
+      fastPath: true,
+    });
 
     expect(result.write).toBeNull();
-    expect(result.discarded).toEqual([expect.objectContaining({ field: 'deletedAt', incomingLost: true })]);
+    expect(result.discarded).toEqual([
+      expect.objectContaining({ field: 'deletedAt', incomingLost: true }),
+    ]);
   });
 });

@@ -1,7 +1,10 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { DevicesService } from './devices.service.js';
-import { RegisterDeviceDto, type RegisterDevice } from './register-device.schema.js';
+import {
+  RegisterDeviceDto,
+  type RegisterDevice,
+} from './register-device.schema.js';
 
 @ApiTags('devices')
 @Controller('devices')

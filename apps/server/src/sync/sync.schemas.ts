@@ -1,4 +1,9 @@
-import { pullQuerySchema, pushRequestSchema, resolveConflictBodySchema, uuidSchema } from '@tccc/shared';
+import {
+  pullQuerySchema,
+  pushRequestSchema,
+  resolveConflictBodySchema,
+  uuidSchema,
+} from '@tccc/shared';
 import { z } from 'zod';
 
 export class PushRequestDto {

@@ -45,7 +45,9 @@ export class ListCasualtiesQueryDto {
   static schema = listCasualtiesQuerySchema;
 }
 
-export const createInjurySiteSchema = injurySiteSchema.omit({ cardId: true, deletedAt: true }).strict();
+export const createInjurySiteSchema = injurySiteSchema
+  .omit({ cardId: true, deletedAt: true })
+  .strict();
 export type CreateInjurySite = z.infer<typeof createInjurySiteSchema>;
 export class CreateInjurySiteDto {
   static schema = createInjurySiteSchema;
@@ -69,17 +71,22 @@ export class UpsertTourniquetDto {
   static schema = upsertTourniquetSchema;
 }
 
-const { id: vitalId, cardId: _vitalCardId, deletedAt: _vitalDeletedAt, ...vitalMeasurementShape } = completeVitalSignsSchema.shape;
+const {
+  id: vitalId,
+  cardId: _vitalCardId,
+  deletedAt: _vitalDeletedAt,
+  ...vitalMeasurementShape
+} = completeVitalSignsSchema.shape;
 
 const VITAL_MEASUREMENTS = [
-  "pulseRate",
-  "pulseLocation",
-  "systolic",
-  "diastolic",
-  "respiratoryRate",
-  "spo2",
-  "avpu",
-  "painScale",
+  'pulseRate',
+  'pulseLocation',
+  'systolic',
+  'diastolic',
+  'respiratoryRate',
+  'spo2',
+  'avpu',
+  'painScale',
 ] as const;
 
 function withVitalRules<T extends z.ZodType>(schema: T) {
@@ -89,32 +96,50 @@ function withVitalRules<T extends z.ZodType>(schema: T) {
         const row = value as Record<string, unknown>;
         return VITAL_MEASUREMENTS.some((key) => row[key] != null);
       },
-      { message: "At least one measurement is required" },
+      { message: 'At least one measurement is required' },
     )
     .refine(
       (value) => {
-        const row = value as { systolic?: number | null; diastolic?: number | null };
-        return row.systolic == null || row.diastolic == null || row.systolic >= row.diastolic;
+        const row = value as {
+          systolic?: number | null;
+          diastolic?: number | null;
+        };
+        return (
+          row.systolic == null ||
+          row.diastolic == null ||
+          row.systolic >= row.diastolic
+        );
       },
-      { message: "Systolic pressure must not be lower than diastolic", path: ["systolic"] },
+      {
+        message: 'Systolic pressure must not be lower than diastolic',
+        path: ['systolic'],
+      },
     );
 }
 
-export const createVitalSignsSchema = withVitalRules(z.object({ id: vitalId, ...vitalMeasurementShape }).strict());
+export const createVitalSignsSchema = withVitalRules(
+  z.object({ id: vitalId, ...vitalMeasurementShape }).strict(),
+);
 export type CreateVitalSigns = z.infer<typeof createVitalSignsSchema>;
 export class CreateVitalSignsDto {
   static schema = createVitalSignsSchema;
 }
 
 export const patchVitalSignsSchema = withVitalRules(
-  z.object(vitalMeasurementShape).partial().required({ clientUpdatedAt: true }).strict(),
+  z
+    .object(vitalMeasurementShape)
+    .partial()
+    .required({ clientUpdatedAt: true })
+    .strict(),
 );
 export type PatchVitalSigns = z.infer<typeof patchVitalSignsSchema>;
 export class PatchVitalSignsDto {
   static schema = patchVitalSignsSchema;
 }
 
-export const createFluidSchema = completeFluidSchema.omit({ cardId: true, deletedAt: true }).strict();
+export const createFluidSchema = completeFluidSchema
+  .omit({ cardId: true, deletedAt: true })
+  .strict();
 export type CreateFluid = z.infer<typeof createFluidSchema>;
 export class CreateFluidDto {
   static schema = createFluidSchema;
@@ -130,7 +155,9 @@ export class PatchFluidDto {
   static schema = patchFluidSchema;
 }
 
-export const createMedicationSchema = completeMedicationSchema.omit({ cardId: true, deletedAt: true }).strict();
+export const createMedicationSchema = completeMedicationSchema
+  .omit({ cardId: true, deletedAt: true })
+  .strict();
 export type CreateMedication = z.infer<typeof createMedicationSchema>;
 export class CreateMedicationDto {
   static schema = createMedicationSchema;

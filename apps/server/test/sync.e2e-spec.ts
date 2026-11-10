@@ -1,5 +1,10 @@
 import { Test } from '@nestjs/testing';
-import { newId, type CasualtyCard, type MutationResult, type PushResponse } from '@tccc/shared';
+import {
+  newId,
+  type CasualtyCard,
+  type MutationResult,
+  type PushResponse,
+} from '@tccc/shared';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { ZodValidationPipe } from '../src/common/zod-validation.pipe.js';
@@ -7,7 +12,8 @@ import type { Prisma } from '../src/generated/prisma/client.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { SyncModule } from '../src/sync/sync.module.js';
 
-const DATABASE_URL = 'postgresql://postgres:password@localhost:5434/tccc_medical_db';
+const DATABASE_URL =
+  'postgresql://postgres:password@localhost:5434/tccc_medical_db';
 process.env.DATABASE_URL = DATABASE_URL;
 
 const DEVICE_A = '0192f100-0000-7000-8000-00000000000a';
@@ -22,7 +28,9 @@ describe('sync API', () => {
   let prisma: PrismaService;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [SyncModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [SyncModule],
+    }).compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ZodValidationPipe());
@@ -34,10 +42,18 @@ describe('sync API', () => {
     if (!prisma) {
       return;
     }
-    await prisma.syncConflict.deleteMany({ where: { discardedDeviceId: { in: [DEVICE_A, DEVICE_B] } } });
-    await prisma.processedMutation.deleteMany({ where: { deviceId: { in: [DEVICE_A, DEVICE_B] } } });
-    await prisma.casualtyCard.deleteMany({ where: { createdByDeviceId: { in: [DEVICE_A, DEVICE_B] } } });
-    await prisma.device.deleteMany({ where: { id: { in: [DEVICE_A, DEVICE_B] } } });
+    await prisma.syncConflict.deleteMany({
+      where: { discardedDeviceId: { in: [DEVICE_A, DEVICE_B] } },
+    });
+    await prisma.processedMutation.deleteMany({
+      where: { deviceId: { in: [DEVICE_A, DEVICE_B] } },
+    });
+    await prisma.casualtyCard.deleteMany({
+      where: { createdByDeviceId: { in: [DEVICE_A, DEVICE_B] } },
+    });
+    await prisma.device.deleteMany({
+      where: { id: { in: [DEVICE_A, DEVICE_B] } },
+    });
     await app?.close();
   });
 
@@ -67,11 +83,19 @@ describe('sync API', () => {
       ],
     };
 
-    const first = await request(app.getHttpServer()).post('/api/sync/push').send(batch).expect(201);
-    const again = await request(app.getHttpServer()).post('/api/sync/push').send(batch).expect(201);
+    const first = await request(app.getHttpServer())
+      .post('/api/sync/push')
+      .send(batch)
+      .expect(201);
+    const again = await request(app.getHttpServer())
+      .post('/api/sync/push')
+      .send(batch)
+      .expect(201);
 
     expect(again.body.results).toEqual(first.body.results);
-    expect(first.body.results.map((result: MutationResult) => result.status)).toEqual(['applied', 'applied']);
+    expect(
+      first.body.results.map((result: MutationResult) => result.status),
+    ).toEqual(['applied', 'applied']);
 
     const body = first.body as PushResponse;
     const card = (body.results[1] as { card: CasualtyCard }).card;
@@ -79,10 +103,19 @@ describe('sync API', () => {
     expect(card.version).toBe(2);
 
     expect(await prisma.casualtyCard.count({ where: { id: cardId } })).toBe(1);
-    expect(await prisma.processedMutation.count({ where: { mutationId: { in: batch.mutations.map((m) => m.mutationId) } } })).toBe(2);
+    expect(
+      await prisma.processedMutation.count({
+        where: { mutationId: { in: batch.mutations.map((m) => m.mutationId) } },
+      }),
+    ).toBe(2);
 
-    const pulled = await request(app.getHttpServer()).get('/api/sync/pull').query({ since: '0', limit: 500 }).expect(200);
-    const found = (pulled.body.cards as CasualtyCard[]).find((item) => item.id === cardId);
+    const pulled = await request(app.getHttpServer())
+      .get('/api/sync/pull')
+      .query({ since: '0', limit: 500 })
+      .expect(200);
+    const found = (pulled.body.cards as CasualtyCard[]).find(
+      (item) => item.id === cardId,
+    );
     expect(found?.lastName).toBe('Shevchenko');
     expect(found?.allergies).toBe('Penicillin');
   });
@@ -103,7 +136,10 @@ describe('sync API', () => {
         },
       ],
     };
-    await request(app.getHttpServer()).post('/api/sync/push').send(create).expect(201);
+    await request(app.getHttpServer())
+      .post('/api/sync/push')
+      .send(create)
+      .expect(201);
 
     const fromA = {
       deviceId: DEVICE_A,
@@ -119,7 +155,10 @@ describe('sync API', () => {
         },
       ],
     };
-    const applied = await request(app.getHttpServer()).post('/api/sync/push').send(fromA).expect(201);
+    const applied = await request(app.getHttpServer())
+      .post('/api/sync/push')
+      .send(fromA)
+      .expect(201);
     expect(applied.body.results[0].status).toBe('applied');
 
     const fromB = {
@@ -136,7 +175,10 @@ describe('sync API', () => {
         },
       ],
     };
-    const merged = await request(app.getHttpServer()).post('/api/sync/push').send(fromB).expect(201);
+    const merged = await request(app.getHttpServer())
+      .post('/api/sync/push')
+      .send(fromB)
+      .expect(201);
 
     expect(merged.body.results[0].status).toBe('merged');
     expect(merged.body.results[0].conflicts).toEqual([
@@ -172,15 +214,40 @@ describe('sync API', () => {
     const push = (deviceId: string, mutation: Record<string, unknown>) =>
       request(app.getHttpServer())
         .post('/api/sync/push')
-        .send({ deviceId, mutations: [{ mutationId: newId(), cardId, op: 'card.upsert', changedFields: ['evacPriority'], ...mutation }] })
+        .send({
+          deviceId,
+          mutations: [
+            {
+              mutationId: newId(),
+              cardId,
+              op: 'card.upsert',
+              changedFields: ['evacPriority'],
+              ...mutation,
+            },
+          ],
+        })
         .expect(201);
-    await push(DEVICE_A, { baseVersion: null, patch: { evacPriority: 'ROUTINE' }, hlc: hlc(1_790_000_010_000, DEVICE_A) });
-    await push(DEVICE_A, { baseVersion: 1, patch: { evacPriority: 'URGENT' }, hlc: hlc(1_790_000_011_000, DEVICE_A) });
-    const merged = await push(DEVICE_B, { baseVersion: 1, patch: { evacPriority: 'PRIORITY' }, hlc: hlc(1_790_000_012_000, DEVICE_B) });
+    await push(DEVICE_A, {
+      baseVersion: null,
+      patch: { evacPriority: 'ROUTINE' },
+      hlc: hlc(1_790_000_010_000, DEVICE_A),
+    });
+    await push(DEVICE_A, {
+      baseVersion: 1,
+      patch: { evacPriority: 'URGENT' },
+      hlc: hlc(1_790_000_011_000, DEVICE_A),
+    });
+    const merged = await push(DEVICE_B, {
+      baseVersion: 1,
+      patch: { evacPriority: 'PRIORITY' },
+      hlc: hlc(1_790_000_012_000, DEVICE_B),
+    });
     const conflictId = merged.body.results[0].conflicts[0].id as string;
 
     const resolve = (choice: 'kept' | 'discarded') =>
-      request(app.getHttpServer()).post(`/api/sync/conflicts/${conflictId}/resolve`).send({ choice });
+      request(app.getHttpServer())
+        .post(`/api/sync/conflicts/${conflictId}/resolve`)
+        .send({ choice });
 
     // Hold the card lock until both requests wait on it, so they always overlap: each has
     // read the unresolved conflict before either can resolve it.
@@ -192,7 +259,9 @@ describe('sync API', () => {
     const holder = prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM "CasualtyCard" WHERE id = ${cardId}::uuid FOR UPDATE`;
-        holderPid = (await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`)[0]!.pid;
+        holderPid = (
+          await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
+        )[0]!.pid;
         await gate;
       },
       { maxWait: 5_000, timeout: 10_000 },
@@ -220,11 +289,17 @@ describe('sync API', () => {
     await holder;
     const [kept, discarded] = await both;
 
-    expect([kept.status, discarded.status].sort((a, b) => a - b)).toEqual([201, 409]);
+    expect([kept.status, discarded.status].sort((a, b) => a - b)).toEqual([
+      201, 409,
+    ]);
     const winner = kept.status === 201 ? 'kept' : 'discarded';
-    const stored = await prisma.syncConflict.findUniqueOrThrow({ where: { id: conflictId } });
+    const stored = await prisma.syncConflict.findUniqueOrThrow({
+      where: { id: conflictId },
+    });
     expect(stored.resolvedBy).toBe(winner);
-    const card = await prisma.casualtyCard.findUniqueOrThrow({ where: { id: cardId } });
+    const card = await prisma.casualtyCard.findUniqueOrThrow({
+      where: { id: cardId },
+    });
     expect(card.evacPriority).toBe(winner === 'kept' ? 'PRIORITY' : 'URGENT');
   });
 
@@ -256,15 +331,27 @@ describe('sync API', () => {
       );
       const elapsedMs = Date.now() - started;
 
-      expect(responses.map((response) => response.status)).toEqual(devices.map(() => 201));
-      const results = responses.map((response) => (response.body as PushResponse).results[0]!);
+      expect(responses.map((response) => response.status)).toEqual(
+        devices.map(() => 201),
+      );
+      const results = responses.map(
+        (response) => (response.body as PushResponse).results[0]!,
+      );
       expect(results.every((result) => result.status === 'applied')).toBe(true);
-      const seqs = new Set(results.map((result) => (result.status === 'rejected' ? null : result.card.changeSeq)));
+      const seqs = new Set(
+        results.map((result) =>
+          result.status === 'rejected' ? null : result.card.changeSeq,
+        ),
+      );
       expect(seqs.size).toBe(devices.length);
       expect(elapsedMs).toBeLessThan(10_000);
     } finally {
-      await prisma.processedMutation.deleteMany({ where: { deviceId: { in: devices } } });
-      await prisma.casualtyCard.deleteMany({ where: { createdByDeviceId: { in: devices } } });
+      await prisma.processedMutation.deleteMany({
+        where: { deviceId: { in: devices } },
+      });
+      await prisma.casualtyCard.deleteMany({
+        where: { createdByDeviceId: { in: devices } },
+      });
       await prisma.device.deleteMany({ where: { id: { in: devices } } });
     }
   });
@@ -274,7 +361,10 @@ describe('sync API', () => {
     const push = (deviceId: string, mutation: Record<string, unknown>) =>
       request(app.getHttpServer())
         .post('/api/sync/push')
-        .send({ deviceId, mutations: [{ mutationId: newId(), cardId, ...mutation }] })
+        .send({
+          deviceId,
+          mutations: [{ mutationId: newId(), cardId, ...mutation }],
+        })
         .expect(201);
 
     await push(DEVICE_A, {
@@ -305,7 +395,11 @@ describe('sync API', () => {
     expect(stale.body.results[0].status).toBe('merged');
     expect(stale.body.results[0].card.allergies).toBe('Penicillin');
     expect(stale.body.results[0].conflicts).toEqual([
-      expect.objectContaining({ field: 'allergies', kept: 'Penicillin', discarded: 'NKA' }),
+      expect.objectContaining({
+        field: 'allergies',
+        kept: 'Penicillin',
+        discarded: 'NKA',
+      }),
     ]);
   });
 
@@ -349,10 +443,21 @@ describe('sync API', () => {
       })
       .expect(201);
 
-    const pulled = await request(app.getHttpServer()).get('/api/sync/pull').query({ since: '0', limit: 500 }).expect(200);
-    const found = (pulled.body.cards as CasualtyCard[]).find((item) => item.id === cardId);
+    const pulled = await request(app.getHttpServer())
+      .get('/api/sync/pull')
+      .query({ since: '0', limit: 500 })
+      .expect(200);
+    const found = (pulled.body.cards as CasualtyCard[]).find(
+      (item) => item.id === cardId,
+    );
     expect(found?.fluids).toEqual([
-      expect.objectContaining({ id: fluidId, name: 'LR', volumeMl: null, route: null, administeredAt: null }),
+      expect.objectContaining({
+        id: fluidId,
+        name: 'LR',
+        volumeMl: null,
+        route: null,
+        administeredAt: null,
+      }),
     ]);
   });
 
@@ -526,7 +631,9 @@ describe('sync API', () => {
       })
       .expect(201);
 
-    expect(response.body.results[1]).toMatchObject({ card: { evacPriority: 'ROUTINE' } });
+    expect(response.body.results[1]).toMatchObject({
+      card: { evacPriority: 'ROUTINE' },
+    });
     expect(response.body.results[1].conflicts ?? []).toEqual([]);
     expect(await prisma.syncConflict.count({ where: { cardId } })).toBe(0);
   });
@@ -543,11 +650,16 @@ describe('sync API', () => {
       hlc: hlc(1_790_000_008_000, DEVICE_A),
     };
     const push = () =>
-      request(app.getHttpServer()).post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [mutation] }).expect(201);
+      request(app.getHttpServer())
+        .post('/api/sync/push')
+        .send({ deviceId: DEVICE_A, mutations: [mutation] })
+        .expect(201);
     await push();
 
     // The result as stored before rowDrafts and the paper-card treatment fields existed.
-    const stored = await prisma.processedMutation.findUniqueOrThrow({ where: { mutationId: mutation.mutationId } });
+    const stored = await prisma.processedMutation.findUniqueOrThrow({
+      where: { mutationId: mutation.mutationId },
+    });
     const result = stored.result as { card: Record<string, unknown> };
     const { rowDrafts: _drafts, tqExtremity: _tq, ...oldCard } = result.card;
     await prisma.processedMutation.update({
@@ -561,7 +673,12 @@ describe('sync API', () => {
       expect.objectContaining({
         mutationId: mutation.mutationId,
         status: 'applied',
-        card: expect.objectContaining({ id: cardId, lastName: 'Tkachenko', rowDrafts: {}, tqExtremity: false }),
+        card: expect.objectContaining({
+          id: cardId,
+          lastName: 'Tkachenko',
+          rowDrafts: {},
+          tqExtremity: false,
+        }),
       }),
     ]);
   });
@@ -613,7 +730,10 @@ describe('sync API', () => {
       .send({
         deviceId: DEVICE_A,
         mutations: [
-          { ...tourniquet(leftId, 'RIGHT_ARM', 1_790_000_009_300), baseVersion: 3 },
+          {
+            ...tourniquet(leftId, 'RIGHT_ARM', 1_790_000_009_300),
+            baseVersion: 3,
+          },
           {
             mutationId: newId(),
             cardId,
@@ -627,8 +747,16 @@ describe('sync API', () => {
       })
       .expect(201);
 
-    expect(response.body.results[0]).toMatchObject({ status: 'rejected', error: { code: 'VALIDATION' } });
-    expect(response.body.results[1]).toMatchObject({ status: 'applied', card: { notes: 'TQ on both arms' } });
-    expect(await prisma.tourniquet.findUnique({ where: { id: leftId } })).toMatchObject({ limb: 'LEFT_ARM' });
+    expect(response.body.results[0]).toMatchObject({
+      status: 'rejected',
+      error: { code: 'VALIDATION' },
+    });
+    expect(response.body.results[1]).toMatchObject({
+      status: 'applied',
+      card: { notes: 'TQ on both arms' },
+    });
+    expect(
+      await prisma.tourniquet.findUnique({ where: { id: leftId } }),
+    ).toMatchObject({ limb: 'LEFT_ARM' });
   });
 });

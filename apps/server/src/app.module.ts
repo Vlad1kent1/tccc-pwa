@@ -9,7 +9,14 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { SyncModule } from './sync/sync.module.js';
 
 @Module({
-  imports: [PrismaModule, HealthModule, DevicesModule, CasualtiesModule, SyncModule, ChaosModule],
+  imports: [
+    PrismaModule,
+    HealthModule,
+    DevicesModule,
+    CasualtiesModule,
+    SyncModule,
+    ChaosModule,
+  ],
   // Deny by default: a controller added later is protected without remembering a decorator.
   providers: [{ provide: APP_GUARD, useClass: UnitTokenGuard }],
 })

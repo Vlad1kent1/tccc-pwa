@@ -10,13 +10,20 @@ function isExempt(url: string): boolean {
  * A drop replaces the response write so the handler, including its DB transaction,
  * has already finished when the socket closes.
  */
-export function chaosMiddleware(req: Request, res: Response, next: NextFunction): void {
+export function chaosMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   if (!chaosState.enabled || isExempt(req.originalUrl.split('?')[0] ?? '')) {
     next();
     return;
   }
 
-  const latency = chaosState.latencyMs > 0 ? Math.floor(Math.random() * (chaosState.latencyMs + 1)) : 0;
+  const latency =
+    chaosState.latencyMs > 0
+      ? Math.floor(Math.random() * (chaosState.latencyMs + 1))
+      : 0;
   setTimeout(() => {
     if (res.headersSent) return;
     // Only mutations are faulted. GET pull and health stay available so a client

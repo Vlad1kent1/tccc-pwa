@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  SetMetadata,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
@@ -15,7 +21,9 @@ export function configuredUnitToken(): string | null {
   return process.env.API_UNIT_TOKEN?.trim() || null;
 }
 
-export function bearerToken(header: string | string[] | undefined): string | null {
+export function bearerToken(
+  header: string | string[] | undefined,
+): string | null {
   if (typeof header !== 'string') return null;
   const match = /^Bearer[ \t]+(\S+)[ \t]*$/i.exec(header);
   return match?.[1] ?? null;
@@ -41,17 +49,22 @@ export class UnitTokenGuard implements CanActivate {
   }
 
   canActivate(context: ExecutionContext): boolean {
-    const isPublic = this.reflector.getAllAndOverride<boolean | undefined>(IS_PUBLIC, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const isPublic = this.reflector.getAllAndOverride<boolean | undefined>(
+      IS_PUBLIC,
+      [context.getHandler(), context.getClass()],
+    );
     if (isPublic) return true;
 
     const http = context.switchToHttp();
     const token = bearerToken(http.getRequest<Request>().headers.authorization);
-    if (this.expected && token && timingSafeEqual(digest(token), this.expected)) return true;
+    if (this.expected && token && timingSafeEqual(digest(token), this.expected))
+      return true;
 
-    http.getResponse<Response>().setHeader('WWW-Authenticate', 'Bearer realm="tccc"');
-    throw new UnauthorizedException(token ? 'Invalid unit token' : 'Unit token required');
+    http
+      .getResponse<Response>()
+      .setHeader('WWW-Authenticate', 'Bearer realm="tccc"');
+    throw new UnauthorizedException(
+      token ? 'Invalid unit token' : 'Unit token required',
+    );
   }
 }

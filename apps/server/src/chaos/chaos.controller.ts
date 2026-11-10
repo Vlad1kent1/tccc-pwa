@@ -10,11 +10,20 @@ export class ChaosController {
   }
 
   @Post()
-  update(@Body() body: { latencyMs?: number; failureRate?: number; dropRate?: number }) {
+  update(
+    @Body()
+    body: {
+      latencyMs?: number;
+      failureRate?: number;
+      dropRate?: number;
+    },
+  ) {
     this.assertEnabled();
     return updateChaos({
-      latencyMs: typeof body?.latencyMs === 'number' ? body.latencyMs : undefined,
-      failureRate: typeof body?.failureRate === 'number' ? body.failureRate : undefined,
+      latencyMs:
+        typeof body?.latencyMs === 'number' ? body.latencyMs : undefined,
+      failureRate:
+        typeof body?.failureRate === 'number' ? body.failureRate : undefined,
       dropRate: typeof body?.dropRate === 'number' ? body.dropRate : undefined,
     });
   }

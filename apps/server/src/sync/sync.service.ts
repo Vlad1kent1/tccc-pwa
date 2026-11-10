@@ -28,13 +28,31 @@ import {
   type PushResponse,
   type SyncConflictInfo,
 } from '@tccc/shared';
-import { formatPayload, logError, payloadLoggingEnabled } from '../common/error-log.js';
+import {
+  formatPayload,
+  logError,
+  payloadLoggingEnabled,
+} from '../common/error-log.js';
 import { Prisma } from '../generated/prisma/client.js';
-import { cardWithChildren, toCardDto, type CardWithChildren } from '../prisma/card-serializer.js';
+import {
+  cardWithChildren,
+  toCardDto,
+  type CardWithChildren,
+} from '../prisma/card-serializer.js';
 import { nextChangeSeq } from '../prisma/change-seq.js';
-import { classifyDbError, dbErrorLines, describeDbError } from '../prisma/prisma-errors.js';
+import {
+  classifyDbError,
+  dbErrorLines,
+  describeDbError,
+} from '../prisma/prisma-errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { mergeCardDelete, mergeCardPatch, mergeChildDelete, mergeChildUpsert, type DiscardedValue } from './merge.js';
+import {
+  mergeCardDelete,
+  mergeCardPatch,
+  mergeChildDelete,
+  mergeChildUpsert,
+  type DiscardedValue,
+} from './merge.js';
 import type { ListConflictsQuery, ResolveConflict } from './sync.schemas.js';
 
 const SERVER_NODE = 'server';
@@ -123,7 +141,11 @@ export class SyncService {
 
   async listConflicts(query: ListConflictsQuery): Promise<ConflictRecord[]> {
     const resolvedAt =
-      query.resolved === 'true' ? { not: null } : query.resolved === 'false' ? null : undefined;
+      query.resolved === 'true'
+        ? { not: null }
+        : query.resolved === 'false'
+          ? null
+          : undefined;
     const rows = await this.prisma.syncConflict.findMany({
       where: { cardId: query.cardId, resolvedAt },
       orderBy: { createdAt: 'asc' },
@@ -131,9 +153,15 @@ export class SyncService {
     return rows.map(toConflictRecord);
   }
 
-  async resolve(id: string, body: ResolveConflict): Promise<{ conflict: ConflictRecord; card: CasualtyCard }> {
+  async resolve(
+    id: string,
+    body: ResolveConflict,
+  ): Promise<{ conflict: ConflictRecord; card: CasualtyCard }> {
     return this.prisma.$transaction(async (tx) => {
-      const found = await tx.syncConflict.findUnique({ where: { id }, select: { cardId: true } });
+      const found = await tx.syncConflict.findUnique({
+        where: { id },
+        select: { cardId: true },
+      });
       if (!found) throw new NotFoundException(`Conflict ${id} not found`);
 
       await this.lockCard(tx, found.cardId);
@@ -143,12 +171,17 @@ export class SyncService {
         where: { id, resolvedAt: null },
         data: { resolvedAt: new Date(), resolvedBy: body.choice },
       });
-      if (!conflict) throw new ConflictException(`Conflict ${id} is already resolved`);
+      if (!conflict)
+        throw new ConflictException(`Conflict ${id} is already resolved`);
 
       const card = await this.loadCard(tx, conflict.cardId);
-      if (!card) throw new NotFoundException(`Card ${conflict.cardId} not found`);
+      if (!card)
+        throw new NotFoundException(`Card ${conflict.cardId} not found`);
 
-      const current = body.choice === 'discarded' ? await this.applyDiscarded(tx, card, conflict) : card;
+      const current =
+        body.choice === 'discarded'
+          ? await this.applyDiscarded(tx, card, conflict)
+          : card;
 
       return { conflict: toConflictRecord(conflict), card: toCardDto(current) };
     }, TX_OPTIONS);
@@ -160,22 +193,37 @@ export class SyncService {
    * stay committed and replay from `ProcessedMutation`. Any other failure rejects only this
    * mutation, so one bad mutation never holds up the rest of the outbox.
    */
-  private async pushOne(deviceId: string, raw: unknown): Promise<MutationResult> {
+  private async pushOne(
+    deviceId: string,
+    raw: unknown,
+  ): Promise<MutationResult> {
     const claimedId = readMutationId(raw);
     for (let attempt = 1; ; attempt += 1) {
       try {
-        return await this.prisma.$transaction((tx) => this.applyInTransaction(tx, deviceId, raw), TX_OPTIONS);
+        return await this.prisma.$transaction(
+          (tx) => this.applyInTransaction(tx, deviceId, raw),
+          TX_OPTIONS,
+        );
       } catch (error) {
         if (error instanceof HttpException) throw error;
         // A concurrent request for the same mutation committed first: answer with its result.
         if (isUniqueViolation(error) && claimedId) {
-          const stored = await this.prisma.processedMutation.findUnique({ where: { mutationId: claimedId } });
-          if (stored) return this.replayStored(this.prisma, stored.result, claimedId, raw);
+          const stored = await this.prisma.processedMutation.findUnique({
+            where: { mutationId: claimedId },
+          });
+          if (stored)
+            return this.replayStored(
+              this.prisma,
+              stored.result,
+              claimedId,
+              raw,
+            );
         }
         const kind = classifyDbError(error);
         // Without a stored result a unique violation gets one more try: a card that a concurrent
         // mutation created is found then.
-        const retry = kind === 'transient' || (kind === 'unique' && attempt === 1);
+        const retry =
+          kind === 'transient' || (kind === 'unique' && attempt === 1);
         if (!retry || attempt >= MAX_ATTEMPTS) {
           return this.failMutation(deviceId, raw, claimedId, error, attempt);
         }
@@ -209,16 +257,28 @@ export class SyncService {
       error,
     );
     if (db.kind === 'transient') {
-      throw new ServiceUnavailableException('The database is busy, retry the push');
+      throw new ServiceUnavailableException(
+        'The database is busy, retry the push',
+      );
     }
     if (db.kind === 'invalid-data' || db.kind === 'unique') {
-      return rejectedResult(mutationId, 'VALIDATION', `Database refused the mutation: ${db.summary}`, {
-        code: db.code,
-        sqlState: db.sqlState,
-        ...db.detail,
-      });
+      return rejectedResult(
+        mutationId,
+        'VALIDATION',
+        `Database refused the mutation: ${db.summary}`,
+        {
+          code: db.code,
+          sqlState: db.sqlState,
+          ...db.detail,
+        },
+      );
     }
-    return rejectedResult(mutationId, 'INTERNAL', 'Server could not apply the mutation', { code: db.code });
+    return rejectedResult(
+      mutationId,
+      'INTERNAL',
+      'Server could not apply the mutation',
+      { code: db.code },
+    );
   }
 
   /**
@@ -245,17 +305,33 @@ export class SyncService {
     const record = isRecord(value) ? value : {};
     if (record.status === 'rejected') {
       const error = isRecord(record.error) ? record.error : {};
-      const code = MUTATION_ERROR_CODES.find((item) => item === error.code) ?? 'INTERNAL';
-      return rejectedResult(mutationId, code, typeof error.message === 'string' ? error.message : 'Mutation was rejected');
+      const code =
+        MUTATION_ERROR_CODES.find((item) => item === error.code) ?? 'INTERNAL';
+      return rejectedResult(
+        mutationId,
+        code,
+        typeof error.message === 'string'
+          ? error.message
+          : 'Mutation was rejected',
+      );
     }
     const storedCard = isRecord(record.card) ? record.card : {};
-    const cardId = typeof storedCard.id === 'string' ? storedCard.id : readField(raw, 'cardId');
+    const cardId =
+      typeof storedCard.id === 'string'
+        ? storedCard.id
+        : readField(raw, 'cardId');
     const card = cardId ? await this.loadCard(client, cardId) : null;
     if (!card) {
-      return rejectedResult(mutationId, 'NOT_FOUND', `Card ${cardId ?? '(unknown)'} not found`);
+      return rejectedResult(
+        mutationId,
+        'NOT_FOUND',
+        `Card ${cardId ?? '(unknown)'} not found`,
+      );
     }
     if (record.status === 'merged') {
-      const conflicts = (Array.isArray(record.conflicts) ? record.conflicts : []).flatMap((item) => {
+      const conflicts = (
+        Array.isArray(record.conflicts) ? record.conflicts : []
+      ).flatMap((item) => {
         const conflict = syncConflictSchema.safeParse(item);
         return conflict.success ? [conflict.data] : [];
       });
@@ -264,10 +340,16 @@ export class SyncService {
     return { mutationId, status: 'applied', card: toCardDto(card) };
   }
 
-  private async applyInTransaction(tx: Tx, deviceId: string, raw: unknown): Promise<MutationResult> {
+  private async applyInTransaction(
+    tx: Tx,
+    deviceId: string,
+    raw: unknown,
+  ): Promise<MutationResult> {
     const claimedId = readMutationId(raw);
     if (claimedId) {
-      const existing = await tx.processedMutation.findUnique({ where: { mutationId: claimedId } });
+      const existing = await tx.processedMutation.findUnique({
+        where: { mutationId: claimedId },
+      });
       if (existing) {
         return this.replayStored(tx, existing.result, claimedId, raw);
       }
@@ -276,7 +358,12 @@ export class SyncService {
     const parsed = mutationSchema.safeParse(raw);
     if (!parsed.success) {
       const mutationId = claimedId ?? '00000000-0000-0000-0000-000000000000';
-      const rejected = rejectedResult(mutationId, 'VALIDATION', 'Mutation failed validation', parsed.error.issues);
+      const rejected = rejectedResult(
+        mutationId,
+        'VALIDATION',
+        'Mutation failed validation',
+        parsed.error.issues,
+      );
       if (claimedId) {
         await this.remember(tx, deviceId, claimedId, rejected);
       }
@@ -303,9 +390,17 @@ export class SyncService {
     if (!card) {
       if (mutation.op === 'card.upsert') {
         const created = await this.createCard(tx, deviceId, mutation);
-        return { mutationId: mutation.mutationId, status: 'applied', card: toCardDto(created) };
+        return {
+          mutationId: mutation.mutationId,
+          status: 'applied',
+          card: toCardDto(created),
+        };
       }
-      return rejectedResult(mutation.mutationId, 'NOT_FOUND', `Card ${mutation.cardId} not found`);
+      return rejectedResult(
+        mutation.mutationId,
+        'NOT_FOUND',
+        `Card ${mutation.cardId} not found`,
+      );
     }
 
     // Every op merges by clock. A matching base version only decides whether a replaced value is a conflict.
@@ -364,7 +459,13 @@ export class SyncService {
       fastPath,
     });
     // Conflicts first, the card last: the card write takes the changeSeq lock.
-    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, card.id, discarded);
+    const conflicts = await this.persistConflicts(
+      tx,
+      deviceId,
+      card.createdByDeviceId,
+      card.id,
+      discarded,
+    );
     const saved = await this.saveCard(tx, card, columns, clock);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
@@ -386,7 +487,13 @@ export class SyncService {
       fastPath,
     });
 
-    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, card.id, discarded);
+    const conflicts = await this.persistConflicts(
+      tx,
+      deviceId,
+      card.createdByDeviceId,
+      card.id,
+      discarded,
+    );
     const saved = await tx.casualtyCard.update({
       where: { id: card.id },
       data: {
@@ -407,12 +514,24 @@ export class SyncService {
     card: CardWithChildren,
     fastPath: boolean,
   ): Promise<MutationResult> {
-    const stored = await this.findChild(tx, mutation.entity, card.id, mutation.row);
+    const stored = await this.findChild(
+      tx,
+      mutation.entity,
+      card.id,
+      mutation.row,
+    );
     if (stored && stored.cardId !== card.id) {
-      return rejectedResult(mutation.mutationId, 'VALIDATION', 'Child row belongs to another card');
+      return rejectedResult(
+        mutation.mutationId,
+        'VALIDATION',
+        'Child row belongs to another card',
+      );
     }
 
-    const incoming = wireChild(mutation.entity, mutation.row as unknown as Record<string, unknown>);
+    const incoming = wireChild(
+      mutation.entity,
+      mutation.row as unknown as Record<string, unknown>,
+    );
     const { write, discarded } = mergeChildUpsert({
       entity: mutation.entity,
       stored: stored ? wireChild(mutation.entity, stored) : null,
@@ -420,10 +539,20 @@ export class SyncService {
       fastPath,
     });
     if (write) {
-      await this.writeChild(tx, mutation.entity, stored ? { ...write, id: stored.id } : write);
+      await this.writeChild(
+        tx,
+        mutation.entity,
+        stored ? { ...write, id: stored.id } : write,
+      );
     }
 
-    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, card.id, discarded);
+    const conflicts = await this.persistConflicts(
+      tx,
+      deviceId,
+      card.createdByDeviceId,
+      card.id,
+      discarded,
+    );
     const saved = await this.bumpCard(tx, card);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
@@ -435,9 +564,17 @@ export class SyncService {
     card: CardWithChildren,
     fastPath: boolean,
   ): Promise<MutationResult> {
-    const stored = await this.findChildById(tx, mutation.entity, mutation.entityId);
+    const stored = await this.findChildById(
+      tx,
+      mutation.entity,
+      mutation.entityId,
+    );
     if (!stored || stored.cardId !== card.id) {
-      return rejectedResult(mutation.mutationId, 'NOT_FOUND', `Child row ${mutation.entityId} not found`);
+      return rejectedResult(
+        mutation.mutationId,
+        'NOT_FOUND',
+        `Child row ${mutation.entityId} not found`,
+      );
     }
 
     const { write, discarded } = mergeChildDelete({
@@ -451,7 +588,13 @@ export class SyncService {
       await this.writeChild(tx, mutation.entity, write);
     }
 
-    const conflicts = await this.persistConflicts(tx, deviceId, card.createdByDeviceId, card.id, discarded);
+    const conflicts = await this.persistConflicts(
+      tx,
+      deviceId,
+      card.createdByDeviceId,
+      card.id,
+      discarded,
+    );
     const saved = await this.bumpCard(tx, card);
     return resultOf(mutation.mutationId, fastPath, toCardDto(saved), conflicts);
   }
@@ -459,14 +602,23 @@ export class SyncService {
   private async applyDiscarded(
     tx: Tx,
     card: CardWithChildren,
-    conflict: { entity: string; entityId: string; field: string; discardedValue: Prisma.JsonValue },
+    conflict: {
+      entity: string;
+      entityId: string;
+      field: string;
+      discardedValue: Prisma.JsonValue;
+    },
   ): Promise<CardWithChildren> {
     const dto = toCardDto(card);
-    const value = conflict.discardedValue === null ? null : conflict.discardedValue;
+    const value =
+      conflict.discardedValue === null ? null : conflict.discardedValue;
 
     if (conflict.entity === 'card') {
       const field = conflict.field;
-      const clock = { ...dto.fieldClock, [field]: newerThan(dto.fieldClock[field]) };
+      const clock = {
+        ...dto.fieldClock,
+        [field]: newerThan(dto.fieldClock[field]),
+      };
       if (field === 'deletedAt') {
         return tx.casualtyCard.update({
           where: { id: card.id },
@@ -480,7 +632,9 @@ export class SyncService {
         });
       }
       if (!isCardField(field)) {
-        throw new ConflictException(`Conflict field ${field} is not a card field`);
+        throw new ConflictException(
+          `Conflict field ${field} is not a card field`,
+        );
       }
       return this.saveCard(tx, card, { [field]: value }, clock);
     }
@@ -488,7 +642,9 @@ export class SyncService {
     const entity = conflict.entity as ChildEntity;
     if (conflict.field === 'row' && value && typeof value === 'object') {
       const row = value as Record<string, unknown>;
-      row.clientUpdatedAt = newerThan(typeof row.clientUpdatedAt === 'string' ? row.clientUpdatedAt : null);
+      row.clientUpdatedAt = newerThan(
+        typeof row.clientUpdatedAt === 'string' ? row.clientUpdatedAt : null,
+      );
       await this.writeChild(tx, entity, row);
       return this.bumpCard(tx, card);
     }
@@ -503,7 +659,9 @@ export class SyncService {
       await this.writeChild(tx, entity, wire);
       return this.bumpCard(tx, card);
     }
-    throw new ConflictException(`Cannot apply discarded field ${conflict.field}`);
+    throw new ConflictException(
+      `Cannot apply discarded field ${conflict.field}`,
+    );
   }
 
   private async saveCard(
@@ -518,7 +676,10 @@ export class SyncService {
       changeSeq: await nextChangeSeq(tx),
     };
     for (const [field, value] of Object.entries(columns)) {
-      data[field] = field === 'injuredAt' && typeof value === 'string' ? new Date(value) : value;
+      data[field] =
+        field === 'injuredAt' && typeof value === 'string'
+          ? new Date(value)
+          : value;
     }
     return tx.casualtyCard.update({
       where: { id: card.id },
@@ -527,7 +688,10 @@ export class SyncService {
     });
   }
 
-  private async bumpCard(tx: Tx, card: CardWithChildren): Promise<CardWithChildren> {
+  private async bumpCard(
+    tx: Tx,
+    card: CardWithChildren,
+  ): Promise<CardWithChildren> {
     return tx.casualtyCard.update({
       where: { id: card.id },
       data: { version: card.version + 1, changeSeq: await nextChangeSeq(tx) },
@@ -572,7 +736,12 @@ export class SyncService {
     });
   }
 
-  private async remember(tx: Tx, deviceId: string, mutationId: string, result: MutationResult): Promise<void> {
+  private async remember(
+    tx: Tx,
+    deviceId: string,
+    mutationId: string,
+    result: MutationResult,
+  ): Promise<void> {
     await tx.processedMutation.create({
       data: { mutationId, deviceId, result: toJson(result) },
     });
@@ -592,7 +761,10 @@ export class SyncService {
   }
 
   private loadCard(tx: Tx, cardId: string): Promise<CardWithChildren | null> {
-    return tx.casualtyCard.findUnique({ where: { id: cardId }, include: cardWithChildren });
+    return tx.casualtyCard.findUnique({
+      where: { id: cardId },
+      include: cardWithChildren,
+    });
   }
 
   private async findChild(
@@ -614,13 +786,21 @@ export class SyncService {
     return null;
   }
 
-  private async findChildById(tx: Tx, entity: ChildEntity, id: string): Promise<StoredChild | null> {
+  private async findChildById(
+    tx: Tx,
+    entity: ChildEntity,
+    id: string,
+  ): Promise<StoredChild | null> {
     const delegate = childDelegate(tx, entity);
     const found = await delegate.findUnique({ where: { id } });
     return found as StoredChild | null;
   }
 
-  private async writeChild(tx: Tx, entity: ChildEntity, row: Record<string, unknown>): Promise<void> {
+  private async writeChild(
+    tx: Tx,
+    entity: ChildEntity,
+    row: Record<string, unknown>,
+  ): Promise<void> {
     const data = toChildColumns(entity, row);
     const id = String(row.id);
     const delegate = childDelegate(tx, entity);
@@ -633,21 +813,33 @@ export class SyncService {
   }
 }
 
-function childDelegate(tx: Tx, entity: ChildEntity): {
+function childDelegate(
+  tx: Tx,
+  entity: ChildEntity,
+): {
   findUnique: (args: { where: { id: string } }) => Promise<unknown>;
-  upsert: (args: { where: { id: string }; create: object; update: object }) => Promise<unknown>;
+  upsert: (args: {
+    where: { id: string };
+    create: object;
+    update: object;
+  }) => Promise<unknown>;
 } {
   return tx[CHILD_DELEGATE[entity]] as never;
 }
 
-function toCardColumns(fields: ReturnType<typeof emptyCardFields>): Record<string, unknown> {
+function toCardColumns(
+  fields: ReturnType<typeof emptyCardFields>,
+): Record<string, unknown> {
   return {
     ...fields,
     injuredAt: fields.injuredAt ? new Date(fields.injuredAt) : null,
   };
 }
 
-function toChildColumns(entity: ChildEntity, row: Record<string, unknown>): Record<string, unknown> {
+function toChildColumns(
+  entity: ChildEntity,
+  row: Record<string, unknown>,
+): Record<string, unknown> {
   const data = { ...row };
   for (const field of CHILD_DATE_FIELDS[entity]) {
     const value = data[field];
@@ -658,7 +850,10 @@ function toChildColumns(entity: ChildEntity, row: Record<string, unknown>): Reco
   return data;
 }
 
-function wireChild(entity: ChildEntity, row: Record<string, unknown>): Record<string, unknown> & {
+function wireChild(
+  entity: ChildEntity,
+  row: Record<string, unknown>,
+): Record<string, unknown> & {
   id: string;
   clientUpdatedAt: string;
   deletedAt: string | null;
@@ -671,7 +866,11 @@ function wireChild(entity: ChildEntity, row: Record<string, unknown>): Record<st
     }
   }
   delete data.card;
-  return data as { id: string; clientUpdatedAt: string; deletedAt: string | null };
+  return data as {
+    id: string;
+    clientUpdatedAt: string;
+    deletedAt: string | null;
+  };
 }
 
 /**
@@ -719,18 +918,26 @@ function retryDelayMs(attempt: number): number {
 
 /** Replay of a mutation stored before conflict ids existed still returns the card. */
 function stripConflictsWithoutIds(value: Prisma.JsonValue): Prisma.JsonValue {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return value;
   const record = value as Record<string, unknown>;
-  if (record.status !== 'merged' || !Array.isArray(record.conflicts)) return value;
+  if (record.status !== 'merged' || !Array.isArray(record.conflicts))
+    return value;
   return {
     ...record,
     conflicts: record.conflicts.filter((item) => {
-      return typeof item === 'object' && item !== null && typeof (item as { id?: unknown }).id === 'string';
+      return (
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as { id?: unknown }).id === 'string'
+      );
     }),
   } as Prisma.JsonValue;
 }
 
-function toJson(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+function toJson(
+  value: unknown,
+): Prisma.InputJsonValue | typeof Prisma.JsonNull {
   if (value === null || value === undefined) {
     return Prisma.JsonNull;
   }
@@ -738,7 +945,10 @@ function toJson(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull 
 }
 
 function isUniqueViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  );
 }
 
 function isCardField(field: string): field is CardField {
@@ -752,13 +962,18 @@ function newerThan(current: string | null | undefined): string {
   if (current && !isNewerHlc(formatted, current)) {
     const parsed = parseHlc(current);
     state = tickHlc(
-      { wallTime: parsed.wallTime, counter: parsed.counter, nodeId: SERVER_NODE },
+      {
+        wallTime: parsed.wallTime,
+        counter: parsed.counter,
+        nodeId: SERVER_NODE,
+      },
       parsed.wallTime,
     );
     formatted = formatHlc(state);
     if (!isNewerHlc(formatted, current)) {
       const counter = parsed.counter >= 9999 ? 0 : parsed.counter + 1;
-      const wallTime = parsed.counter >= 9999 ? parsed.wallTime + 1 : parsed.wallTime;
+      const wallTime =
+        parsed.counter >= 9999 ? parsed.wallTime + 1 : parsed.wallTime;
       formatted = formatHlc({ wallTime, counter, nodeId: SERVER_NODE });
     }
   }

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { SyncService } from './sync.service.js';
 import {
   ListConflictsQueryDto,
@@ -36,7 +44,10 @@ export class SyncController {
    * The id is the one returned on the push result and by GET /sync/conflicts.
    */
   @Post('conflicts/:id/resolve')
-  resolve(@Param('id', ParseUUIDPipe) id: string, @Body() body: ResolveConflictDto) {
+  resolve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ResolveConflictDto,
+  ) {
     return this.sync.resolve(id, body as unknown as ResolveConflict);
   }
 }

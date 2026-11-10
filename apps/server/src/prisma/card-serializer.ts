@@ -37,7 +37,10 @@ export function toCardDto(card: CardWithChildren): CardDto {
   return {
     ...scalars,
     injuredAt: isoOrNull(injuredAt),
-    injurySites: injurySites.map((r) => ({ ...r, deletedAt: isoOrNull(r.deletedAt) })),
+    injurySites: injurySites.map((r) => ({
+      ...r,
+      deletedAt: isoOrNull(r.deletedAt),
+    })),
     tourniquets: tourniquets.map((r) => ({
       ...r,
       appliedAt: iso(r.appliedAt),

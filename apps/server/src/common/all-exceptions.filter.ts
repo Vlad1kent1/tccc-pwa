@@ -1,4 +1,11 @@
-import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import {
+  type ArgumentsHost,
+  Catch,
+  type ExceptionFilter,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import {
   classifyDbError,
@@ -32,7 +39,10 @@ const MESSAGE_BY_KIND: Record<DbErrorKind, string> = {
 };
 
 /** Client errors not worth a log line: a missing or wrong unit token, and an unknown id. */
-const QUIET_STATUSES = new Set<number>([HttpStatus.UNAUTHORIZED, HttpStatus.NOT_FOUND]);
+const QUIET_STATUSES = new Set<number>([
+  HttpStatus.UNAUTHORIZED,
+  HttpStatus.NOT_FOUND,
+]);
 
 interface Reply {
   status: number;
@@ -68,17 +78,27 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
   private log(exception: unknown, request: Request, status: number): void {
     const line = `${request.method} ${request.originalUrl} → ${status}`;
-    if (exception instanceof HttpException || middlewareStatus(exception) !== null) {
+    if (
+      exception instanceof HttpException ||
+      middlewareStatus(exception) !== null
+    ) {
       if (status < 500 && QUIET_STATUSES.has(status)) return;
       const lines = [`${line}: ${(exception as Error).message}`];
-      if (exception instanceof HttpException) lines.push(`response: ${formatPayload(exception.getResponse(), 2_000)}`);
+      if (exception instanceof HttpException)
+        lines.push(
+          `response: ${formatPayload(exception.getResponse(), 2_000)}`,
+        );
       lines.push(...requestLines(request));
       if (status >= 500) logError(this.logger, lines, exception);
       else this.logger.warn(lines.join('\n  '));
       return;
     }
     const [headline, ...details] = dbErrorLines(describeDbError(exception));
-    logError(this.logger, [`${line}: ${headline}`, ...details, ...requestLines(request)], exception);
+    logError(
+      this.logger,
+      [`${line}: ${headline}`, ...details, ...requestLines(request)],
+      exception,
+    );
   }
 }
 
@@ -86,45 +106,79 @@ function toReply(exception: unknown): Reply {
   if (exception instanceof HttpException) {
     const status = exception.getStatus();
     const response = exception.getResponse();
-    if (typeof response === 'object' && response !== null) return { status, body: response };
+    if (typeof response === 'object' && response !== null)
+      return { status, body: response };
     // The body Nest's own filter sends for a string response.
     const errorCode = (exception as { errorCode?: unknown }).errorCode;
-    return { status, body: { statusCode: status, message: response, ...(errorCode !== undefined ? { errorCode } : {}) } };
+    return {
+      status,
+      body: {
+        statusCode: status,
+        message: response,
+        ...(errorCode !== undefined ? { errorCode } : {}),
+      },
+    };
   }
   const middleware = middlewareStatus(exception);
   if (middleware !== null) {
-    return { status: middleware, body: { statusCode: middleware, message: (exception as Error).message } };
+    return {
+      status: middleware,
+      body: { statusCode: middleware, message: (exception as Error).message },
+    };
   }
   const kind = classifyDbError(exception);
   if (isPrismaError(exception) || kind !== 'unknown') {
     const status = STATUS_BY_KIND[kind];
-    const message = kind === 'invalid-data' ? `Invalid data: ${summarize(exception)}` : MESSAGE_BY_KIND[kind];
+    const message =
+      kind === 'invalid-data'
+        ? `Invalid data: ${summarize(exception)}`
+        : MESSAGE_BY_KIND[kind];
     const code = describeDbError(exception).code;
-    return { status, body: { statusCode: status, message, ...(code ? { error: code } : {}) } };
+    return {
+      status,
+      body: { statusCode: status, message, ...(code ? { error: code } : {}) },
+    };
   }
   return {
     status: HttpStatus.INTERNAL_SERVER_ERROR,
-    body: { statusCode: HttpStatus.INTERNAL_SERVER_ERROR, message: MESSAGE_BY_KIND.unknown },
+    body: {
+      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      message: MESSAGE_BY_KIND.unknown,
+    },
   };
 }
 
 /** Status of an `http-errors` error raised by Express middleware, such as body-parser's 413. */
 function middlewareStatus(error: unknown): number | null {
   if (!(error instanceof Error)) return null;
-  const { status, statusCode, expose } = error as Error & { status?: unknown; statusCode?: unknown; expose?: unknown };
-  if (typeof expose !== 'boolean' || typeof statusCode !== 'number' || status !== statusCode) return null;
+  const { status, statusCode, expose } = error as Error & {
+    status?: unknown;
+    statusCode?: unknown;
+    expose?: unknown;
+  };
+  if (
+    typeof expose !== 'boolean' ||
+    typeof statusCode !== 'number' ||
+    status !== statusCode
+  )
+    return null;
   return statusCode >= 400 && statusCode < 600 ? statusCode : null;
 }
 
 /** Route params, query, and body of the failed request. Headers, which carry the unit token, are left out. */
 function requestLines(request: Request): string[] {
   const lines: string[] = [];
-  if (hasKeys(request.params)) lines.push(`params: ${formatPayload(request.params)}`);
-  if (hasKeys(request.query)) lines.push(`query: ${formatPayload(request.query)}`);
-  if (payloadLoggingEnabled() && hasKeys(request.body)) lines.push(`body: ${formatPayload(request.body)}`);
+  if (hasKeys(request.params))
+    lines.push(`params: ${formatPayload(request.params)}`);
+  if (hasKeys(request.query))
+    lines.push(`query: ${formatPayload(request.query)}`);
+  if (payloadLoggingEnabled() && hasKeys(request.body))
+    lines.push(`body: ${formatPayload(request.body)}`);
   return lines;
 }
 
 function hasKeys(value: unknown): boolean {
-  return typeof value === 'object' && value !== null && Object.keys(value).length > 0;
+  return (
+    typeof value === 'object' && value !== null && Object.keys(value).length > 0
+  );
 }

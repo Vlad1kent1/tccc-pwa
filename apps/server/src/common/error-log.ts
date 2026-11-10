@@ -12,18 +12,30 @@ export function payloadLoggingEnabled(): boolean {
 }
 
 /** JSON for the log, cut to `max` characters. */
-export function formatPayload(value: unknown, max = MAX_LOGGED_PAYLOAD): string {
+export function formatPayload(
+  value: unknown,
+  max = MAX_LOGGED_PAYLOAD,
+): string {
   let json: string;
   try {
-    json = JSON.stringify(value, (_key, item: unknown) => (typeof item === 'bigint' ? item.toString() : item)) ?? String(value);
+    json =
+      JSON.stringify(value, (_key, item: unknown) =>
+        typeof item === 'bigint' ? item.toString() : item,
+      ) ?? String(value);
   } catch {
     json = String(value);
   }
-  return json.length > max ? `${json.slice(0, max)}…(+${json.length - max} chars)` : json;
+  return json.length > max
+    ? `${json.slice(0, max)}…(+${json.length - max} chars)`
+    : json;
 }
 
 /** Logs the lines as one entry, followed by the error's stack trace when it has one. */
-export function logError(logger: Logger, lines: string[], error: unknown): void {
+export function logError(
+  logger: Logger,
+  lines: string[],
+  error: unknown,
+): void {
   const message = lines.join('\n  ');
   const stack = error instanceof Error ? error.stack : undefined;
   if (stack) logger.error(message, stack);

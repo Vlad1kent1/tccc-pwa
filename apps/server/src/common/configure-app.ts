@@ -14,8 +14,16 @@ export function configureApp(app: INestApplication): void {
   const config = new DocumentBuilder()
     .setTitle('TCCC Medical')
     .setVersion('1.0')
-    .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'API_UNIT_TOKEN' })
+    .addBearerAuth({
+      type: 'http',
+      scheme: 'bearer',
+      description: 'API_UNIT_TOKEN',
+    })
     .addSecurityRequirements('bearer')
     .build();
-  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
+  SwaggerModule.setup(
+    'api/docs',
+    app,
+    SwaggerModule.createDocument(app, config),
+  );
 }

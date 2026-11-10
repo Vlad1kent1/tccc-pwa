@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   CARD_FIELDS,
   Limb,
@@ -10,7 +15,11 @@ import {
 import { z } from 'zod';
 import { Prisma } from '../generated/prisma/client.js';
 import { assertVersion } from '../common/if-match.js';
-import { cardWithChildren, toCardDto, type CardWithChildren } from '../prisma/card-serializer.js';
+import {
+  cardWithChildren,
+  toCardDto,
+  type CardWithChildren,
+} from '../prisma/card-serializer.js';
 import { nextChangeSeq } from '../prisma/change-seq.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -56,7 +65,8 @@ export class CasualtiesService {
     const where: Prisma.CasualtyCardWhereInput = {};
     if (query.includeDeleted !== 'true') where.deletedAt = null;
     if (query.priority) where.evacPriority = query.priority;
-    if (query.updatedSince) where.serverUpdatedAt = { gte: new Date(query.updatedSince) };
+    if (query.updatedSince)
+      where.serverUpdatedAt = { gte: new Date(query.updatedSince) };
     if (query.cursor) where.changeSeq = { gt: BigInt(query.cursor) };
     if (query.search) {
       where.OR = [
@@ -95,12 +105,18 @@ export class CasualtiesService {
         serverUpdatedAt: row.serverUpdatedAt.toISOString(),
         deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
       })),
-      nextCursor: rows.length > limit ? page[page.length - 1]!.changeSeq.toString() : null,
+      nextCursor:
+        rows.length > limit
+          ? page[page.length - 1]!.changeSeq.toString()
+          : null,
     };
   }
 
   async get(id: string): Promise<CasualtyCard> {
-    const card = await this.prisma.casualtyCard.findUnique({ where: { id }, include: cardWithChildren });
+    const card = await this.prisma.casualtyCard.findUnique({
+      where: { id },
+      include: cardWithChildren,
+    });
     if (!card) throw new NotFoundException(`Casualty ${id} not found`);
     return toCardDto(card);
   }
@@ -138,22 +154,42 @@ export class CasualtiesService {
     }
   }
 
-  async update(id: string, expectedVersion: number, patch: CardPatch): Promise<CasualtyCard> {
+  async update(
+    id: string,
+    expectedVersion: number,
+    patch: CardPatch,
+  ): Promise<CasualtyCard> {
     return this.withCard(id, expectedVersion, async (tx) => {
-      await tx.casualtyCard.update({ where: { id }, data: toCardColumns(patch) as Prisma.CasualtyCardUpdateInput });
+      await tx.casualtyCard.update({
+        where: { id },
+        data: toCardColumns(patch) as Prisma.CasualtyCardUpdateInput,
+      });
       return 'bump';
     });
   }
 
   async softDelete(id: string, expectedVersion: number): Promise<CasualtyCard> {
-    return this.withCard(id, expectedVersion, async (tx, card) => {
-      if (card.deletedAt) return 'keep';
-      await tx.casualtyCard.update({ where: { id }, data: { deletedAt: new Date() } });
-      return 'bump';
-    }, { allowDeleted: true });
+    return this.withCard(
+      id,
+      expectedVersion,
+      async (tx, card) => {
+        if (card.deletedAt) return 'keep';
+        await tx.casualtyCard.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        });
+        return 'bump';
+      },
+      { allowDeleted: true },
+    );
   }
 
-  async upsertTourniquet(id: string, limbParam: string, expectedVersion: number, body: UpsertTourniquet): Promise<CasualtyCard> {
+  async upsertTourniquet(
+    id: string,
+    limbParam: string,
+    expectedVersion: number,
+    body: UpsertTourniquet,
+  ): Promise<CasualtyCard> {
     const limb = parseLimb(limbParam);
     return this.withCard(id, expectedVersion, async (tx) => {
       const rowId = tourniquetId(id, limb);
@@ -178,77 +214,171 @@ export class CasualtiesService {
     });
   }
 
-  async deleteTourniquet(id: string, limbParam: string, expectedVersion: number): Promise<CasualtyCard> {
+  async deleteTourniquet(
+    id: string,
+    limbParam: string,
+    expectedVersion: number,
+  ): Promise<CasualtyCard> {
     const limb = parseLimb(limbParam);
     return this.withCard(id, expectedVersion, async (tx) => {
-      const row = await tx.tourniquet.findUnique({ where: { cardId_limb: { cardId: id, limb } } });
+      const row = await tx.tourniquet.findUnique({
+        where: { cardId_limb: { cardId: id, limb } },
+      });
       if (!row) throw new NotFoundException(`Tourniquet ${limb} not found`);
       if (row.deletedAt) return 'keep';
-      await tx.tourniquet.update({ where: { id: row.id }, data: { deletedAt: new Date() } });
+      await tx.tourniquet.update({
+        where: { id: row.id },
+        data: { deletedAt: new Date() },
+      });
       return 'bump';
     });
   }
 
-  addInjurySite(id: string, expectedVersion: number, body: CreateInjurySite): Promise<CasualtyCard> {
+  addInjurySite(
+    id: string,
+    expectedVersion: number,
+    body: CreateInjurySite,
+  ): Promise<CasualtyCard> {
     return this.addChild(
       id,
       expectedVersion,
       () => this.prisma.injurySite.findUnique({ where: { id: body.id } }),
-      (tx) => tx.injurySite.create({ data: { ...body, cardId: id } as Prisma.InjurySiteUncheckedCreateInput }),
+      (tx) =>
+        tx.injurySite.create({
+          data: {
+            ...body,
+            cardId: id,
+          } as Prisma.InjurySiteUncheckedCreateInput,
+        }),
     );
   }
 
-  patchInjurySite(id: string, itemId: string, expectedVersion: number, body: PatchInjurySite): Promise<CasualtyCard> {
-    return this.patchChild(id, itemId, expectedVersion, (tx) => tx.injurySite.findUnique({ where: { id: itemId } }), (tx) =>
-      tx.injurySite.update({ where: { id: itemId }, data: body as Prisma.InjurySiteUncheckedUpdateInput }),
+  patchInjurySite(
+    id: string,
+    itemId: string,
+    expectedVersion: number,
+    body: PatchInjurySite,
+  ): Promise<CasualtyCard> {
+    return this.patchChild(
+      id,
+      itemId,
+      expectedVersion,
+      (tx) => tx.injurySite.findUnique({ where: { id: itemId } }),
+      (tx) =>
+        tx.injurySite.update({
+          where: { id: itemId },
+          data: body as Prisma.InjurySiteUncheckedUpdateInput,
+        }),
     );
   }
 
-  deleteInjurySite(id: string, itemId: string, expectedVersion: number): Promise<CasualtyCard> {
-    return this.tombstoneChild(id, itemId, expectedVersion, (tx) => tx.injurySite.findUnique({ where: { id: itemId } }), (tx, at) =>
-      tx.injurySite.update({ where: { id: itemId }, data: { deletedAt: at } }),
+  deleteInjurySite(
+    id: string,
+    itemId: string,
+    expectedVersion: number,
+  ): Promise<CasualtyCard> {
+    return this.tombstoneChild(
+      id,
+      itemId,
+      expectedVersion,
+      (tx) => tx.injurySite.findUnique({ where: { id: itemId } }),
+      (tx, at) =>
+        tx.injurySite.update({
+          where: { id: itemId },
+          data: { deletedAt: at },
+        }),
     );
   }
 
-  addVitalSigns(id: string, expectedVersion: number, body: CreateVitalSigns): Promise<CasualtyCard> {
-    return this.addChild(id, expectedVersion, () => this.prisma.vitalSigns.findUnique({ where: { id: body.id } }), (tx) =>
-      tx.vitalSigns.create({
-        data: { ...body, cardId: id, measuredAt: new Date(body.measuredAt) } as Prisma.VitalSignsUncheckedCreateInput,
-      }),
+  addVitalSigns(
+    id: string,
+    expectedVersion: number,
+    body: CreateVitalSigns,
+  ): Promise<CasualtyCard> {
+    return this.addChild(
+      id,
+      expectedVersion,
+      () => this.prisma.vitalSigns.findUnique({ where: { id: body.id } }),
+      (tx) =>
+        tx.vitalSigns.create({
+          data: {
+            ...body,
+            cardId: id,
+            measuredAt: new Date(body.measuredAt),
+          } as Prisma.VitalSignsUncheckedCreateInput,
+        }),
     );
   }
 
-  patchVitalSigns(id: string, itemId: string, expectedVersion: number, body: PatchVitalSigns): Promise<CasualtyCard> {
-    return this.patchChild(id, itemId, expectedVersion, (tx) => tx.vitalSigns.findUnique({ where: { id: itemId } }), (tx) =>
-      tx.vitalSigns.update({
-        where: { id: itemId },
-        data: {
-          ...body,
-          ...(body.measuredAt !== undefined ? { measuredAt: new Date(body.measuredAt) } : {}),
-        } as Prisma.VitalSignsUncheckedUpdateInput,
-      }),
+  patchVitalSigns(
+    id: string,
+    itemId: string,
+    expectedVersion: number,
+    body: PatchVitalSigns,
+  ): Promise<CasualtyCard> {
+    return this.patchChild(
+      id,
+      itemId,
+      expectedVersion,
+      (tx) => tx.vitalSigns.findUnique({ where: { id: itemId } }),
+      (tx) =>
+        tx.vitalSigns.update({
+          where: { id: itemId },
+          data: {
+            ...body,
+            ...(body.measuredAt !== undefined
+              ? { measuredAt: new Date(body.measuredAt) }
+              : {}),
+          } as Prisma.VitalSignsUncheckedUpdateInput,
+        }),
     );
   }
 
-  deleteVitalSigns(id: string, itemId: string, expectedVersion: number): Promise<CasualtyCard> {
-    return this.tombstoneChild(id, itemId, expectedVersion, (tx) => tx.vitalSigns.findUnique({ where: { id: itemId } }), (tx, at) =>
-      tx.vitalSigns.update({ where: { id: itemId }, data: { deletedAt: at } }),
+  deleteVitalSigns(
+    id: string,
+    itemId: string,
+    expectedVersion: number,
+  ): Promise<CasualtyCard> {
+    return this.tombstoneChild(
+      id,
+      itemId,
+      expectedVersion,
+      (tx) => tx.vitalSigns.findUnique({ where: { id: itemId } }),
+      (tx, at) =>
+        tx.vitalSigns.update({
+          where: { id: itemId },
+          data: { deletedAt: at },
+        }),
     );
   }
 
-  addFluid(id: string, expectedVersion: number, body: CreateFluid): Promise<CasualtyCard> {
-    return this.addChild(id, expectedVersion, () => this.prisma.fluidAdministration.findUnique({ where: { id: body.id } }), (tx) =>
-      tx.fluidAdministration.create({
-        data: {
-          ...body,
-          cardId: id,
-          administeredAt: new Date(body.administeredAt),
-        } as Prisma.FluidAdministrationUncheckedCreateInput,
-      }),
+  addFluid(
+    id: string,
+    expectedVersion: number,
+    body: CreateFluid,
+  ): Promise<CasualtyCard> {
+    return this.addChild(
+      id,
+      expectedVersion,
+      () =>
+        this.prisma.fluidAdministration.findUnique({ where: { id: body.id } }),
+      (tx) =>
+        tx.fluidAdministration.create({
+          data: {
+            ...body,
+            cardId: id,
+            administeredAt: new Date(body.administeredAt),
+          } as Prisma.FluidAdministrationUncheckedCreateInput,
+        }),
     );
   }
 
-  patchFluid(id: string, itemId: string, expectedVersion: number, body: PatchFluid): Promise<CasualtyCard> {
+  patchFluid(
+    id: string,
+    itemId: string,
+    expectedVersion: number,
+    body: PatchFluid,
+  ): Promise<CasualtyCard> {
     return this.patchChild(
       id,
       itemId,
@@ -259,55 +389,102 @@ export class CasualtiesService {
           where: { id: itemId },
           data: {
             ...body,
-            ...(body.administeredAt !== undefined ? { administeredAt: new Date(body.administeredAt) } : {}),
+            ...(body.administeredAt !== undefined
+              ? { administeredAt: new Date(body.administeredAt) }
+              : {}),
           } as Prisma.FluidAdministrationUncheckedUpdateInput,
         }),
     );
   }
 
-  deleteFluid(id: string, itemId: string, expectedVersion: number): Promise<CasualtyCard> {
+  deleteFluid(
+    id: string,
+    itemId: string,
+    expectedVersion: number,
+  ): Promise<CasualtyCard> {
     return this.tombstoneChild(
       id,
       itemId,
       expectedVersion,
       (tx) => tx.fluidAdministration.findUnique({ where: { id: itemId } }),
-      (tx, at) => tx.fluidAdministration.update({ where: { id: itemId }, data: { deletedAt: at } }),
+      (tx, at) =>
+        tx.fluidAdministration.update({
+          where: { id: itemId },
+          data: { deletedAt: at },
+        }),
     );
   }
 
-  addMedication(id: string, expectedVersion: number, body: CreateMedication): Promise<CasualtyCard> {
-    return this.addChild(id, expectedVersion, () => this.prisma.medication.findUnique({ where: { id: body.id } }), (tx) =>
-      tx.medication.create({
-        data: {
-          ...body,
-          cardId: id,
-          administeredAt: new Date(body.administeredAt),
-        } as Prisma.MedicationUncheckedCreateInput,
-      }),
+  addMedication(
+    id: string,
+    expectedVersion: number,
+    body: CreateMedication,
+  ): Promise<CasualtyCard> {
+    return this.addChild(
+      id,
+      expectedVersion,
+      () => this.prisma.medication.findUnique({ where: { id: body.id } }),
+      (tx) =>
+        tx.medication.create({
+          data: {
+            ...body,
+            cardId: id,
+            administeredAt: new Date(body.administeredAt),
+          } as Prisma.MedicationUncheckedCreateInput,
+        }),
     );
   }
 
-  patchMedication(id: string, itemId: string, expectedVersion: number, body: PatchMedication): Promise<CasualtyCard> {
-    return this.patchChild(id, itemId, expectedVersion, (tx) => tx.medication.findUnique({ where: { id: itemId } }), (tx) =>
-      tx.medication.update({
-        where: { id: itemId },
-        data: {
-          ...body,
-          ...(body.administeredAt !== undefined ? { administeredAt: new Date(body.administeredAt) } : {}),
-        } as Prisma.MedicationUncheckedUpdateInput,
-      }),
+  patchMedication(
+    id: string,
+    itemId: string,
+    expectedVersion: number,
+    body: PatchMedication,
+  ): Promise<CasualtyCard> {
+    return this.patchChild(
+      id,
+      itemId,
+      expectedVersion,
+      (tx) => tx.medication.findUnique({ where: { id: itemId } }),
+      (tx) =>
+        tx.medication.update({
+          where: { id: itemId },
+          data: {
+            ...body,
+            ...(body.administeredAt !== undefined
+              ? { administeredAt: new Date(body.administeredAt) }
+              : {}),
+          } as Prisma.MedicationUncheckedUpdateInput,
+        }),
     );
   }
 
-  deleteMedication(id: string, itemId: string, expectedVersion: number): Promise<CasualtyCard> {
-    return this.tombstoneChild(id, itemId, expectedVersion, (tx) => tx.medication.findUnique({ where: { id: itemId } }), (tx, at) =>
-      tx.medication.update({ where: { id: itemId }, data: { deletedAt: at } }),
+  deleteMedication(
+    id: string,
+    itemId: string,
+    expectedVersion: number,
+  ): Promise<CasualtyCard> {
+    return this.tombstoneChild(
+      id,
+      itemId,
+      expectedVersion,
+      (tx) => tx.medication.findUnique({ where: { id: itemId } }),
+      (tx, at) =>
+        tx.medication.update({
+          where: { id: itemId },
+          data: { deletedAt: at },
+        }),
     );
   }
 
-  private replay(existing: CardWithChildren, input: CreateCasualty): CasualtyCard {
+  private replay(
+    existing: CardWithChildren,
+    input: CreateCasualty,
+  ): CasualtyCard {
     if (!sameCard(existing, input)) {
-      throw new ConflictException('Casualty id already exists with different data');
+      throw new ConflictException(
+        'Casualty id already exists with different data',
+      );
     }
     return toCardDto(existing);
   }
@@ -320,7 +497,8 @@ export class CasualtiesService {
   ): Promise<CasualtyCard> {
     const existing = await find();
     if (existing) {
-      if (existing.cardId !== cardId) throw new ConflictException('Child row id belongs to another casualty');
+      if (existing.cardId !== cardId)
+        throw new ConflictException('Child row id belongs to another casualty');
       throw new ConflictException('Child row id already exists');
     }
     return this.withCard(cardId, expectedVersion, async (tx) => {
@@ -333,7 +511,9 @@ export class CasualtiesService {
     cardId: string,
     itemId: string,
     expectedVersion: number,
-    find: (tx: Tx) => Promise<{ cardId: string; deletedAt: Date | null } | null>,
+    find: (
+      tx: Tx,
+    ) => Promise<{ cardId: string; deletedAt: Date | null } | null>,
     update: (tx: Tx) => Promise<unknown>,
   ): Promise<CasualtyCard> {
     return this.withCard(cardId, expectedVersion, async (tx) => {
@@ -350,12 +530,15 @@ export class CasualtiesService {
     cardId: string,
     itemId: string,
     expectedVersion: number,
-    find: (tx: Tx) => Promise<{ cardId: string; deletedAt: Date | null } | null>,
+    find: (
+      tx: Tx,
+    ) => Promise<{ cardId: string; deletedAt: Date | null } | null>,
     update: (tx: Tx, deletedAt: Date) => Promise<unknown>,
   ): Promise<CasualtyCard> {
     return this.withCard(cardId, expectedVersion, async (tx) => {
       const row = await find(tx);
-      if (!row || row.cardId !== cardId) throw new NotFoundException(`Row ${itemId} not found`);
+      if (!row || row.cardId !== cardId)
+        throw new NotFoundException(`Row ${itemId} not found`);
       if (row.deletedAt) return 'keep';
       await update(tx, new Date());
       return 'bump';
@@ -370,7 +553,10 @@ export class CasualtiesService {
   ): Promise<CasualtyCard> {
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "CasualtyCard" WHERE id = ${id}::uuid FOR UPDATE`;
-      const card = await tx.casualtyCard.findUnique({ where: { id }, include: cardWithChildren });
+      const card = await tx.casualtyCard.findUnique({
+        where: { id },
+        include: cardWithChildren,
+      });
       if (!card || (card.deletedAt && !options?.allowDeleted)) {
         throw new NotFoundException(`Casualty ${id} not found`);
       }
@@ -379,10 +565,16 @@ export class CasualtiesService {
       if (write === 'bump') {
         await tx.casualtyCard.update({
           where: { id },
-          data: { version: { increment: 1 }, changeSeq: await nextChangeSeq(tx) },
+          data: {
+            version: { increment: 1 },
+            changeSeq: await nextChangeSeq(tx),
+          },
         });
       }
-      const next = await tx.casualtyCard.findUnique({ where: { id }, include: cardWithChildren });
+      const next = await tx.casualtyCard.findUnique({
+        where: { id },
+        include: cardWithChildren,
+      });
       if (!next) throw new NotFoundException(`Casualty ${id} not found`);
       return next;
     });
@@ -391,7 +583,12 @@ export class CasualtiesService {
 }
 
 function fieldsOf(input: CreateCasualty): CardFields {
-  const { id: _id, createdByDeviceId: _device, fieldClock: _clock, ...fields } = input;
+  const {
+    id: _id,
+    createdByDeviceId: _device,
+    fieldClock: _clock,
+    ...fields
+  } = input;
   return fields;
 }
 
@@ -431,5 +628,8 @@ function parseLimb(value: string): (typeof Limb)[keyof typeof Limb] {
 }
 
 function isUniqueViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  );
 }

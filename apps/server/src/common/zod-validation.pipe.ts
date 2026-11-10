@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, type PipeTransform, type ArgumentMetadata } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  type PipeTransform,
+  type ArgumentMetadata,
+} from '@nestjs/common';
 import type { ZodType } from 'zod';
 
 export interface ZodSchemaHost {
@@ -10,7 +15,8 @@ export function hasZodSchema(metatype: unknown): metatype is ZodSchemaHost {
     typeof metatype === 'function' &&
     'schema' in metatype &&
     typeof (metatype as { schema?: unknown }).schema === 'object' &&
-    (metatype as { schema?: { safeParse?: unknown } }).schema?.safeParse !== undefined
+    (metatype as { schema?: { safeParse?: unknown } }).schema?.safeParse !==
+      undefined
   );
 }
 

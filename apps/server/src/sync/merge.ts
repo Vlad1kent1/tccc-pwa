@@ -1,4 +1,10 @@
-import { HLC_PATTERN, isNewerHlc, type CardField, type ChildEntity, type SyncConflictInfo } from '@tccc/shared';
+import {
+  HLC_PATTERN,
+  isNewerHlc,
+  type CardField,
+  type ChildEntity,
+  type SyncConflictInfo,
+} from '@tccc/shared';
 
 /** A value that lost last-writer-wins, ready to persist as a `SyncConflict`. */
 export interface DiscardedValue {
@@ -21,9 +27,14 @@ export function sameJson(a: unknown, b: unknown): boolean {
  * conflict to review. It happens when a device's create and first edit reach the
  * server in one push, before the create was acknowledged.
  */
-export function sameWriter(storedClock: string, incomingClock: string): boolean {
+export function sameWriter(
+  storedClock: string,
+  incomingClock: string,
+): boolean {
   const writer = HLC_PATTERN.exec(storedClock)?.[3];
-  return writer !== undefined && writer === HLC_PATTERN.exec(incomingClock)?.[3];
+  return (
+    writer !== undefined && writer === HLC_PATTERN.exec(incomingClock)?.[3]
+  );
 }
 
 /**
@@ -45,9 +56,15 @@ export function mergeField(args: {
 }): { value: unknown; clock: string; discarded: DiscardedValue | null } {
   const incomingWins = isNewerHlc(args.incomingClock, args.storedClock);
   const value = incomingWins ? args.incoming : args.stored;
-  const clock = incomingWins ? args.incomingClock : (args.storedClock ?? args.incomingClock);
+  const clock = incomingWins
+    ? args.incomingClock
+    : (args.storedClock ?? args.incomingClock);
   const discardedValue = incomingWins ? args.stored : args.incoming;
-  if (args.storedClock == null || sameWriter(args.storedClock, args.incomingClock) || sameJson(value, discardedValue)) {
+  if (
+    args.storedClock == null ||
+    sameWriter(args.storedClock, args.incomingClock) ||
+    sameJson(value, discardedValue)
+  ) {
     return { value, clock, discarded: null };
   }
   return {
@@ -83,10 +100,16 @@ export function mergeChildRow<T extends ChildClockRow>(args: {
   if (!args.stored) {
     return { row: args.incoming, discarded: null };
   }
-  const incomingWins = isNewerHlc(args.incoming.clientUpdatedAt, args.stored.clientUpdatedAt);
+  const incomingWins = isNewerHlc(
+    args.incoming.clientUpdatedAt,
+    args.stored.clientUpdatedAt,
+  );
   const row = incomingWins ? args.incoming : args.stored;
   const loser = incomingWins ? args.stored : args.incoming;
-  if (sameJson(row, loser) || sameWriter(args.stored.clientUpdatedAt, args.incoming.clientUpdatedAt)) {
+  if (
+    sameJson(row, loser) ||
+    sameWriter(args.stored.clientUpdatedAt, args.incoming.clientUpdatedAt)
+  ) {
     return { row, discarded: null };
   }
   return {
@@ -121,9 +144,14 @@ export function mergeTombstone<T extends ChildClockRow>(args: {
     storedClock: args.stored.clientUpdatedAt,
     incomingClock: args.hlc,
   });
-  const row = merged.value === args.stored.deletedAt
-    ? args.stored
-    : { ...args.stored, deletedAt: args.deletedAt, clientUpdatedAt: args.hlc };
+  const row =
+    merged.value === args.stored.deletedAt
+      ? args.stored
+      : {
+          ...args.stored,
+          deletedAt: args.deletedAt,
+          clientUpdatedAt: args.hlc,
+        };
   return { row, discarded: merged.discarded };
 }
 
@@ -137,7 +165,10 @@ export function mergeTombstone<T extends ChildClockRow>(args: {
 // receives, so its base version can match while its clock is older.
 
 /** On the fast path only a write that lost is a conflict; otherwise every discarded value is. */
-export function conflictToRecord(discarded: DiscardedValue | null, fastPath: boolean): DiscardedValue | null {
+export function conflictToRecord(
+  discarded: DiscardedValue | null,
+  fastPath: boolean,
+): DiscardedValue | null {
   if (!discarded) return null;
   return fastPath && !discarded.incomingLost ? null : discarded;
 }
@@ -151,7 +182,11 @@ export function mergeCardPatch(args: {
   changedFields: readonly CardField[];
   hlc: string;
   fastPath: boolean;
-}): { columns: Partial<Record<CardField, unknown>>; clock: Record<string, string>; discarded: DiscardedValue[] } {
+}): {
+  columns: Partial<Record<CardField, unknown>>;
+  clock: Record<string, string>;
+  discarded: DiscardedValue[];
+} {
   const clock = { ...args.storedClock };
   const columns: Partial<Record<CardField, unknown>> = {};
   const discarded: DiscardedValue[] = [];
@@ -183,7 +218,11 @@ export function mergeCardDelete(args: {
   deletedAt: string;
   hlc: string;
   fastPath: boolean;
-}): { deletedAt: string | null; clock: Record<string, string>; discarded: DiscardedValue[] } {
+}): {
+  deletedAt: string | null;
+  clock: Record<string, string>;
+  discarded: DiscardedValue[];
+} {
   const merged = mergeField({
     entity: 'card',
     entityId: args.cardId,
@@ -208,10 +247,17 @@ export function mergeChildUpsert<T extends ChildClockRow>(args: {
   incoming: T;
   fastPath: boolean;
 }): { write: T | null; discarded: DiscardedValue[] } {
-  const merged = mergeChildRow({ entity: args.entity, stored: args.stored, incoming: args.incoming });
+  const merged = mergeChildRow({
+    entity: args.entity,
+    stored: args.stored,
+    incoming: args.incoming,
+  });
   const incomingWins = !args.stored || merged.row === args.incoming;
   const conflict = conflictToRecord(merged.discarded, args.fastPath);
-  return { write: incomingWins ? merged.row : null, discarded: conflict ? [conflict] : [] };
+  return {
+    write: incomingWins ? merged.row : null,
+    discarded: conflict ? [conflict] : [],
+  };
 }
 
 /** The tombstoned row to write for a child delete, or null when a newer edit keeps the row. */
@@ -222,8 +268,18 @@ export function mergeChildDelete<T extends ChildClockRow>(args: {
   hlc: string;
   fastPath: boolean;
 }): { write: T | null; discarded: DiscardedValue[] } {
-  const merged = mergeTombstone({ entity: args.entity, stored: args.stored, deletedAt: args.deletedAt, hlc: args.hlc });
-  const changed = merged.row.deletedAt !== args.stored.deletedAt || merged.row.clientUpdatedAt !== args.stored.clientUpdatedAt;
+  const merged = mergeTombstone({
+    entity: args.entity,
+    stored: args.stored,
+    deletedAt: args.deletedAt,
+    hlc: args.hlc,
+  });
+  const changed =
+    merged.row.deletedAt !== args.stored.deletedAt ||
+    merged.row.clientUpdatedAt !== args.stored.clientUpdatedAt;
   const conflict = conflictToRecord(merged.discarded, args.fastPath);
-  return { write: changed ? merged.row : null, discarded: conflict ? [conflict] : [] };
+  return {
+    write: changed ? merged.row : null,
+    discarded: conflict ? [conflict] : [],
+  };
 }

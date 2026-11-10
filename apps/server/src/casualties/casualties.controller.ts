@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { parseIfMatch } from '../common/if-match.js';
 import { CasualtiesService } from './casualties.service.js';
@@ -59,7 +71,10 @@ export class CasualtiesController {
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string, @Headers('if-match') ifMatch: string | undefined) {
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers('if-match') ifMatch: string | undefined,
+  ) {
     return this.casualties.softDelete(id, parseIfMatch(ifMatch));
   }
 
@@ -70,7 +85,12 @@ export class CasualtiesController {
     @Headers('if-match') ifMatch: string | undefined,
     @Body() body: UpsertTourniquetDto,
   ) {
-    return this.casualties.upsertTourniquet(id, limb, parseIfMatch(ifMatch), body as UpsertTourniquet);
+    return this.casualties.upsertTourniquet(
+      id,
+      limb,
+      parseIfMatch(ifMatch),
+      body as UpsertTourniquet,
+    );
   }
 
   @Delete(':id/tourniquets/:limb')
@@ -88,7 +108,11 @@ export class CasualtiesController {
     @Headers('if-match') ifMatch: string | undefined,
     @Body() body: CreateInjurySiteDto,
   ) {
-    return this.casualties.addInjurySite(id, parseIfMatch(ifMatch), body as CreateInjurySite);
+    return this.casualties.addInjurySite(
+      id,
+      parseIfMatch(ifMatch),
+      body as CreateInjurySite,
+    );
   }
 
   @Patch(':id/injury-sites/:itemId')
@@ -98,7 +122,12 @@ export class CasualtiesController {
     @Headers('if-match') ifMatch: string | undefined,
     @Body() body: PatchInjurySiteDto,
   ) {
-    return this.casualties.patchInjurySite(id, itemId, parseIfMatch(ifMatch), body as PatchInjurySite);
+    return this.casualties.patchInjurySite(
+      id,
+      itemId,
+      parseIfMatch(ifMatch),
+      body as PatchInjurySite,
+    );
   }
 
   @Delete(':id/injury-sites/:itemId')
@@ -116,7 +145,11 @@ export class CasualtiesController {
     @Headers('if-match') ifMatch: string | undefined,
     @Body() body: CreateVitalSignsDto,
   ) {
-    return this.casualties.addVitalSigns(id, parseIfMatch(ifMatch), body as CreateVitalSigns);
+    return this.casualties.addVitalSigns(
+      id,
+      parseIfMatch(ifMatch),
+      body as CreateVitalSigns,
+    );
   }
 
   @Patch(':id/vitals/:itemId')
@@ -126,7 +159,12 @@ export class CasualtiesController {
     @Headers('if-match') ifMatch: string | undefined,
     @Body() body: PatchVitalSignsDto,
   ) {
-    return this.casualties.patchVitalSigns(id, itemId, parseIfMatch(ifMatch), body as PatchVitalSigns);
+    return this.casualties.patchVitalSigns(
+      id,
+      itemId,
+      parseIfMatch(ifMatch),
+      body as PatchVitalSigns,
+    );
   }
 
   @Delete(':id/vitals/:itemId')
@@ -144,7 +182,11 @@ export class CasualtiesController {
     @Headers('if-match') ifMatch: string | undefined,
     @Body() body: CreateFluidDto,
   ) {
-    return this.casualties.addFluid(id, parseIfMatch(ifMatch), body as CreateFluid);
+    return this.casualties.addFluid(
+      id,
+      parseIfMatch(ifMatch),
+      body as CreateFluid,
+    );
   }
 
   @Patch(':id/fluids/:itemId')
@@ -154,7 +196,12 @@ export class CasualtiesController {
     @Headers('if-match') ifMatch: string | undefined,
     @Body() body: PatchFluidDto,
   ) {
-    return this.casualties.patchFluid(id, itemId, parseIfMatch(ifMatch), body as PatchFluid);
+    return this.casualties.patchFluid(
+      id,
+      itemId,
+      parseIfMatch(ifMatch),
+      body as PatchFluid,
+    );
   }
 
   @Delete(':id/fluids/:itemId')
@@ -172,7 +219,11 @@ export class CasualtiesController {
     @Headers('if-match') ifMatch: string | undefined,
     @Body() body: CreateMedicationDto,
   ) {
-    return this.casualties.addMedication(id, parseIfMatch(ifMatch), body as CreateMedication);
+    return this.casualties.addMedication(
+      id,
+      parseIfMatch(ifMatch),
+      body as CreateMedication,
+    );
   }
 
   @Patch(':id/medications/:itemId')
@@ -182,7 +233,12 @@ export class CasualtiesController {
     @Headers('if-match') ifMatch: string | undefined,
     @Body() body: PatchMedicationDto,
   ) {
-    return this.casualties.patchMedication(id, itemId, parseIfMatch(ifMatch), body as PatchMedication);
+    return this.casualties.patchMedication(
+      id,
+      itemId,
+      parseIfMatch(ifMatch),
+      body as PatchMedication,
+    );
   }
 
   @Delete(':id/medications/:itemId')

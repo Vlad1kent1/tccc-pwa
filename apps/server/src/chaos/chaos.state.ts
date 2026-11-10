@@ -26,9 +26,13 @@ export function clamp01(value: number): number {
   return value;
 }
 
-export function updateChaos(patch: Partial<Omit<ChaosSettings, 'enabled'>>): ChaosSettings {
-  if (patch.latencyMs != null) chaosState.latencyMs = Math.max(0, patch.latencyMs);
-  if (patch.failureRate != null) chaosState.failureRate = clamp01(patch.failureRate);
+export function updateChaos(
+  patch: Partial<Omit<ChaosSettings, 'enabled'>>,
+): ChaosSettings {
+  if (patch.latencyMs != null)
+    chaosState.latencyMs = Math.max(0, patch.latencyMs);
+  if (patch.failureRate != null)
+    chaosState.failureRate = clamp01(patch.failureRate);
   if (patch.dropRate != null) chaosState.dropRate = clamp01(patch.dropRate);
   return { ...chaosState };
 }

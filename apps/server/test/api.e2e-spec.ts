@@ -6,7 +6,8 @@ import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/common/configure-app.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
-process.env.DATABASE_URL = 'postgresql://postgres:password@localhost:5434/tccc_medical_db';
+process.env.DATABASE_URL =
+  'postgresql://postgres:password@localhost:5434/tccc_medical_db';
 process.env.CORS_ORIGIN = 'http://localhost:3000';
 process.env.API_UNIT_TOKEN = 'api-e2e-unit-token-0001';
 
@@ -24,10 +25,13 @@ function cardBody(id: string, extra: Record<string, unknown> = {}) {
 describe('casualties API', () => {
   let app: INestApplication;
   let prisma: PrismaService;
-  const authed = () => request.agent(app.getHttpServer()).set('Authorization', AUTH);
+  const authed = () =>
+    request.agent(app.getHttpServer()).set('Authorization', AUTH);
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
@@ -36,7 +40,9 @@ describe('casualties API', () => {
 
   afterAll(async () => {
     if (!prisma) return;
-    await prisma.casualtyCard.deleteMany({ where: { createdByDeviceId: DEVICE } });
+    await prisma.casualtyCard.deleteMany({
+      where: { createdByDeviceId: DEVICE },
+    });
     await prisma.device.deleteMany({ where: { id: DEVICE } });
     await app?.close();
   });
@@ -54,18 +60,35 @@ describe('casualties API', () => {
     // first request built and closes it when that request ends, so a request built
     // earlier would find the port closed (ECONNREFUSED).
     const calls = [
-      () => request(app.getHttpServer()).get('/api/sync/pull').query({ since: '0' }),
+      () =>
+        request(app.getHttpServer())
+          .get('/api/sync/pull')
+          .query({ since: '0' }),
       () => request(app.getHttpServer()).get('/api/casualties'),
-      () => request(app.getHttpServer()).post('/api/sync/push').send({ deviceId: DEVICE, mutations: [] }),
+      () =>
+        request(app.getHttpServer())
+          .post('/api/sync/push')
+          .send({ deviceId: DEVICE, mutations: [] }),
     ];
-    for (const authorization of [undefined, 'Bearer wrong-token-0000000000', process.env.API_UNIT_TOKEN!]) {
+    for (const authorization of [
+      undefined,
+      'Bearer wrong-token-0000000000',
+      process.env.API_UNIT_TOKEN!,
+    ]) {
       for (const build of calls) {
         const call = build();
-        const response = await (authorization ? call.set('Authorization', authorization) : call).expect(401);
-        expect(response.headers['www-authenticate']).toBe('Bearer realm="tccc"');
+        const response = await (
+          authorization ? call.set('Authorization', authorization) : call
+        ).expect(401);
+        expect(response.headers['www-authenticate']).toBe(
+          'Bearer realm="tccc"',
+        );
       }
     }
-    await authed().get('/api/sync/pull').query({ since: '0', limit: 1 }).expect(200);
+    await authed()
+      .get('/api/sync/pull')
+      .query({ since: '0', limit: 1 })
+      .expect(200);
   });
 
   it('registers a device and refreshes last-seen without clearing a stored label', async () => {
@@ -75,9 +98,14 @@ describe('casualties API', () => {
       .expect(201);
     expect(first.body).toMatchObject({ deviceId: DEVICE, label: 'Medic 1' });
 
-    const again = await authed().post('/api/devices/register').send({ deviceId: DEVICE }).expect(201);
+    const again = await authed()
+      .post('/api/devices/register')
+      .send({ deviceId: DEVICE })
+      .expect(201);
     expect(again.body.label).toBe('Medic 1');
-    expect(Date.parse(again.body.lastSeenAt)).toBeGreaterThanOrEqual(Date.parse(first.body.lastSeenAt));
+    expect(Date.parse(again.body.lastSeenAt)).toBeGreaterThanOrEqual(
+      Date.parse(first.body.lastSeenAt),
+    );
   });
 
   it('creates, updates, and soft-deletes a card with child rows and version checks', async () => {
@@ -106,8 +134,13 @@ describe('casualties API', () => {
     const loaded = await authed().get(`/api/casualties/${id}`).expect(200);
     expect(loaded.body.id).toBe(id);
 
-    const listed = await authed().get('/api/casualties').query({ search: 'Shevchenko', priority: 'ROUTINE' }).expect(200);
-    expect(listed.body.items.some((item: { id: string }) => item.id === id)).toBe(true);
+    const listed = await authed()
+      .get('/api/casualties')
+      .query({ search: 'Shevchenko', priority: 'ROUTINE' })
+      .expect(200);
+    expect(
+      listed.body.items.some((item: { id: string }) => item.id === id),
+    ).toBe(true);
 
     const patched = await authed()
       .patch(`/api/casualties/${id}`)
@@ -118,8 +151,15 @@ describe('casualties API', () => {
     expect(patched.body.version).toBe(2);
     expect(patched.body.changeSeq).not.toBe(card.changeSeq);
 
-    await authed().patch(`/api/casualties/${id}`).set('If-Match', '1').send({ notes: 'stale' }).expect(412);
-    await authed().patch(`/api/casualties/${id}`).send({ notes: 'missing' }).expect(428);
+    await authed()
+      .patch(`/api/casualties/${id}`)
+      .set('If-Match', '1')
+      .send({ notes: 'stale' })
+      .expect(412);
+    await authed()
+      .patch(`/api/casualties/${id}`)
+      .send({ notes: 'missing' })
+      .expect(428);
 
     let version = 2;
     const appliedAt = '2026-09-27T08:00:00.000Z';
@@ -130,7 +170,11 @@ describe('casualties API', () => {
       .expect(200);
     version = withTourniquet.body.version;
     expect(withTourniquet.body.tourniquets).toEqual([
-      expect.objectContaining({ limb: 'RIGHT_ARM', type: 'CAT', deletedAt: null }),
+      expect.objectContaining({
+        limb: 'RIGHT_ARM',
+        type: 'CAT',
+        deletedAt: null,
+      }),
     ]);
 
     const injuryId = newId();
@@ -216,33 +260,56 @@ describe('casualties API', () => {
       .set('If-Match', String(version))
       .expect(200);
     version = tombstonedVitals.body.version;
-    expect(tombstonedVitals.body.vitalSigns[0].deletedAt).toEqual(expect.any(String));
+    expect(tombstonedVitals.body.vitalSigns[0].deletedAt).toEqual(
+      expect.any(String),
+    );
 
     const tombstonedTourniquet = await authed()
       .delete(`/api/casualties/${id}/tourniquets/RIGHT_ARM`)
       .set('If-Match', String(version))
       .expect(200);
     version = tombstonedTourniquet.body.version;
-    expect(tombstonedTourniquet.body.tourniquets[0].deletedAt).toEqual(expect.any(String));
+    expect(tombstonedTourniquet.body.tourniquets[0].deletedAt).toEqual(
+      expect.any(String),
+    );
 
-    await authed().delete(`/api/casualties/${id}/injury-sites/${injuryId}`).set('If-Match', String(version)).expect(200);
+    await authed()
+      .delete(`/api/casualties/${id}/injury-sites/${injuryId}`)
+      .set('If-Match', String(version))
+      .expect(200);
     version += 1;
-    await authed().delete(`/api/casualties/${id}/fluids/${fluidId}`).set('If-Match', String(version)).expect(200);
+    await authed()
+      .delete(`/api/casualties/${id}/fluids/${fluidId}`)
+      .set('If-Match', String(version))
+      .expect(200);
     version += 1;
-    await authed().delete(`/api/casualties/${id}/medications/${medicationId}`).set('If-Match', String(version)).expect(200);
+    await authed()
+      .delete(`/api/casualties/${id}/medications/${medicationId}`)
+      .set('If-Match', String(version))
+      .expect(200);
     version += 1;
 
-    const removed = await authed().delete(`/api/casualties/${id}`).set('If-Match', String(version)).expect(200);
+    const removed = await authed()
+      .delete(`/api/casualties/${id}`)
+      .set('If-Match', String(version))
+      .expect(200);
     expect(removed.body.deletedAt).toEqual(expect.any(String));
     expect(removed.body.version).toBe(version + 1);
 
-    const hidden = await authed().get('/api/casualties').query({ search: 'Shevchenko' }).expect(200);
-    expect(hidden.body.items.some((item: { id: string }) => item.id === id)).toBe(false);
+    const hidden = await authed()
+      .get('/api/casualties')
+      .query({ search: 'Shevchenko' })
+      .expect(200);
+    expect(
+      hidden.body.items.some((item: { id: string }) => item.id === id),
+    ).toBe(false);
     const visible = await authed()
       .get('/api/casualties')
       .query({ search: 'Shevchenko', includeDeleted: 'true' })
       .expect(200);
-    expect(visible.body.items.some((item: { id: string }) => item.id === id)).toBe(true);
+    expect(
+      visible.body.items.some((item: { id: string }) => item.id === id),
+    ).toBe(true);
   });
 
   it('lists every casualties, device, and health route in Swagger', async () => {

@@ -13,7 +13,9 @@ const CHANGE_SEQ_LOCK_KEY = 4242001;
  * before it (the card row, the device row) never wait on a holder of this lock, so the
  * order card → device → changeSeq cannot deadlock. A create has no card row to lock yet.
  */
-export async function nextChangeSeq(tx: Prisma.TransactionClient): Promise<bigint> {
+export async function nextChangeSeq(
+  tx: Prisma.TransactionClient,
+): Promise<bigint> {
   // One round trip: the materialized CTE takes the lock before `nextval` runs.
   const rows = await tx.$queryRaw<{ seq: bigint }[]>`
     WITH locked AS MATERIALIZED (SELECT pg_advisory_xact_lock(${CHANGE_SEQ_LOCK_KEY}::bigint))

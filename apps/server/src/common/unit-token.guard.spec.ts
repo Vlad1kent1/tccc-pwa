@@ -13,7 +13,9 @@ function contextFor(authorization: string | undefined, isPublic = false) {
     getHandler: () => handler,
     getClass: () => Controller,
     switchToHttp: () => ({
-      getRequest: () => ({ headers: authorization === undefined ? {} : { authorization } }),
+      getRequest: () => ({
+        headers: authorization === undefined ? {} : { authorization },
+      }),
       getResponse: () => ({ setHeader }),
     }),
   } as unknown as ExecutionContext;
@@ -34,30 +36,52 @@ function guardWith(token: string | undefined): UnitTokenGuard {
 
 describe('UnitTokenGuard', () => {
   it('lets a request with the configured bearer token through', () => {
-    expect(guardWith(TOKEN).canActivate(contextFor(`Bearer ${TOKEN}`).context)).toBe(true);
-    expect(guardWith(TOKEN).canActivate(contextFor(`bearer   ${TOKEN}`).context)).toBe(true);
+    expect(
+      guardWith(TOKEN).canActivate(contextFor(`Bearer ${TOKEN}`).context),
+    ).toBe(true);
+    expect(
+      guardWith(TOKEN).canActivate(contextFor(`bearer   ${TOKEN}`).context),
+    ).toBe(true);
   });
 
   it('answers 401 with a Bearer challenge for a missing, malformed, or wrong token', () => {
     const guard = guardWith(TOKEN);
-    for (const header of [undefined, '', TOKEN, `Basic ${TOKEN}`, `Bearer ${TOKEN}x`, `Bearer ${TOKEN.slice(1)}`]) {
+    for (const header of [
+      undefined,
+      '',
+      TOKEN,
+      `Basic ${TOKEN}`,
+      `Bearer ${TOKEN}x`,
+      `Bearer ${TOKEN.slice(1)}`,
+    ]) {
       const { context, setHeader } = contextFor(header);
       expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
-      expect(setHeader).toHaveBeenCalledWith('WWW-Authenticate', 'Bearer realm="tccc"');
+      expect(setHeader).toHaveBeenCalledWith(
+        'WWW-Authenticate',
+        'Bearer realm="tccc"',
+      );
     }
   });
 
   it('fails closed when no token is configured', () => {
     for (const configured of [undefined, '', '   ']) {
       const guard = guardWith(configured);
-      expect(() => guard.canActivate(contextFor('Bearer ').context)).toThrow(UnauthorizedException);
-      expect(() => guard.canActivate(contextFor('Bearer anything').context)).toThrow(UnauthorizedException);
+      expect(() => guard.canActivate(contextFor('Bearer ').context)).toThrow(
+        UnauthorizedException,
+      );
+      expect(() =>
+        guard.canActivate(contextFor('Bearer anything').context),
+      ).toThrow(UnauthorizedException);
     }
   });
 
   it('skips the check for routes marked public', () => {
-    expect(guardWith(TOKEN).canActivate(contextFor(undefined, true).context)).toBe(true);
-    expect(guardWith(undefined).canActivate(contextFor(undefined, true).context)).toBe(true);
+    expect(
+      guardWith(TOKEN).canActivate(contextFor(undefined, true).context),
+    ).toBe(true);
+    expect(
+      guardWith(undefined).canActivate(contextFor(undefined, true).context),
+    ).toBe(true);
   });
 });
 

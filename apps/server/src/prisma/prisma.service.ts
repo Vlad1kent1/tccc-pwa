@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
 
@@ -26,8 +31,10 @@ export class PrismaService
           idle_in_transaction_session_timeout: 60_000,
         },
         {
-          onPoolError: (error) => logger.warn(`Idle database connection failed: ${error.message}`),
-          onConnectionError: (error) => logger.warn(`Database connection error: ${error.message}`),
+          onPoolError: (error) =>
+            logger.warn(`Idle database connection failed: ${error.message}`),
+          onConnectionError: (error) =>
+            logger.warn(`Database connection error: ${error.message}`),
         },
       ),
     });

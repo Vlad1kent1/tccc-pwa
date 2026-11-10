@@ -7,7 +7,8 @@ import { chaosState, updateChaos } from '../src/chaos/chaos.state.js';
 import { configureApp } from '../src/common/configure-app.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
-process.env.DATABASE_URL = 'postgresql://postgres:password@localhost:5434/tccc_medical_db';
+process.env.DATABASE_URL =
+  'postgresql://postgres:password@localhost:5434/tccc_medical_db';
 process.env.CORS_ORIGIN = 'http://localhost:3000';
 process.env.API_UNIT_TOKEN = 'unstable-e2e-unit-token-0001';
 
@@ -43,12 +44,15 @@ async function expectDropped(call: Supertest): Promise<void> {
 describe('API under unstable network', () => {
   let app: INestApplication;
   let prisma: PrismaService;
-  const authed = () => request.agent(app.getHttpServer()).set('Authorization', AUTH);
+  const authed = () =>
+    request.agent(app.getHttpServer()).set('Authorization', AUTH);
 
   beforeAll(async () => {
     chaosState.enabled = true;
     updateChaos({ latencyMs: 0, failureRate: 0, dropRate: 0 });
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
@@ -63,10 +67,18 @@ describe('API under unstable network', () => {
     updateChaos({ latencyMs: 0, failureRate: 0, dropRate: 0 });
     chaosState.enabled = false;
     if (!prisma) return;
-    await prisma.syncConflict.deleteMany({ where: { discardedDeviceId: { in: [DEVICE_A, DEVICE_B] } } });
-    await prisma.processedMutation.deleteMany({ where: { deviceId: { in: [DEVICE_A, DEVICE_B] } } });
-    await prisma.casualtyCard.deleteMany({ where: { createdByDeviceId: { in: [DEVICE_A, DEVICE_B] } } });
-    await prisma.device.deleteMany({ where: { id: { in: [DEVICE_A, DEVICE_B] } } });
+    await prisma.syncConflict.deleteMany({
+      where: { discardedDeviceId: { in: [DEVICE_A, DEVICE_B] } },
+    });
+    await prisma.processedMutation.deleteMany({
+      where: { deviceId: { in: [DEVICE_A, DEVICE_B] } },
+    });
+    await prisma.casualtyCard.deleteMany({
+      where: { createdByDeviceId: { in: [DEVICE_A, DEVICE_B] } },
+    });
+    await prisma.device.deleteMany({
+      where: { id: { in: [DEVICE_A, DEVICE_B] } },
+    });
     await app?.close();
   });
 
@@ -107,7 +119,10 @@ describe('API under unstable network', () => {
     const patchedInjury = await authed()
       .patch(`/api/casualties/${card.id}/injury-sites/${injuryId}`)
       .set('If-Match', String(version))
-      .send({ description: 'shrapnel', clientUpdatedAt: hlc(1_790_000_100_100) })
+      .send({
+        description: 'shrapnel',
+        clientUpdatedAt: hlc(1_790_000_100_100),
+      })
       .expect(200);
     version = patchedInjury.body.version;
     expect(patchedInjury.body.injurySites[0].description).toBe('shrapnel');
@@ -194,7 +209,10 @@ describe('API under unstable network', () => {
     await authed()
       .patch(`/api/casualties/${card.id}/injury-sites/${injuryId}`)
       .set('If-Match', String(created.body.version))
-      .send({ description: 'should-not-stick', clientUpdatedAt: hlc(1_790_000_110_100) })
+      .send({
+        description: 'should-not-stick',
+        clientUpdatedAt: hlc(1_790_000_110_100),
+      })
       .expect(503);
 
     const during = await load(card.id);
@@ -225,7 +243,10 @@ describe('API under unstable network', () => {
           description: 'before',
           clientUpdatedAt: hlc(1_790_000_120_000),
         },
-        patch: { description: 'after-drop', clientUpdatedAt: hlc(1_790_000_120_100) },
+        patch: {
+          description: 'after-drop',
+          clientUpdatedAt: hlc(1_790_000_120_100),
+        },
         read: (loaded: CasualtyCard) => loaded.injurySites[0]?.description,
         expected: 'after-drop',
       },
@@ -241,7 +262,10 @@ describe('API under unstable network', () => {
           clientUpdatedAt: hlc(1_790_000_120_200),
         },
         patch: { volumeMl: 450, clientUpdatedAt: hlc(1_790_000_120_300) },
-        read: (loaded: CasualtyCard) => loaded.fluids.find((row) => row.volumeMl === 450 || row.volumeMl === 100)?.volumeMl,
+        read: (loaded: CasualtyCard) =>
+          loaded.fluids.find(
+            (row) => row.volumeMl === 450 || row.volumeMl === 100,
+          )?.volumeMl,
         expected: 450,
       },
       {
@@ -446,7 +470,11 @@ describe('API under unstable network', () => {
         row: item.row,
       };
       updateChaos({ dropRate: 1 });
-      await expectDropped(authed().post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [mutation] }));
+      await expectDropped(
+        authed()
+          .post('/api/sync/push')
+          .send({ deviceId: DEVICE_A, mutations: [mutation] }),
+      );
       expect(await childCount(item.entity, cardId)).toBe(1);
 
       updateChaos({ dropRate: 0 });
@@ -457,13 +485,19 @@ describe('API under unstable network', () => {
       expect(replay.body.results[0].status).toBe('applied');
       expect(replay.body.results[0].card.version).toBe(version + 1);
       version += 1;
-      expect(await prisma.processedMutation.count({ where: { mutationId: mutation.mutationId } })).toBe(1);
+      expect(
+        await prisma.processedMutation.count({
+          where: { mutationId: mutation.mutationId },
+        }),
+      ).toBe(1);
     }
 
     expect(await prisma.injurySite.count({ where: { cardId } })).toBe(1);
     expect(await prisma.tourniquet.count({ where: { cardId } })).toBe(1);
     expect(await prisma.vitalSigns.count({ where: { cardId } })).toBe(1);
-    expect(await prisma.fluidAdministration.count({ where: { cardId } })).toBe(1);
+    expect(await prisma.fluidAdministration.count({ where: { cardId } })).toBe(
+      1,
+    );
     expect(await prisma.medication.count({ where: { cardId } })).toBe(1);
 
     const loaded = await load(cardId);
@@ -479,8 +513,16 @@ describe('API under unstable network', () => {
       hlc: hlc(1_790_000_150_000),
     };
     updateChaos({ dropRate: 1 });
-    await expectDropped(authed().post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [deletion] }));
-    expect(await prisma.vitalSigns.count({ where: { cardId, deletedAt: { not: null } } })).toBe(1);
+    await expectDropped(
+      authed()
+        .post('/api/sync/push')
+        .send({ deviceId: DEVICE_A, mutations: [deletion] }),
+    );
+    expect(
+      await prisma.vitalSigns.count({
+        where: { cardId, deletedAt: { not: null } },
+      }),
+    ).toBe(1);
 
     updateChaos({ dropRate: 0 });
     const replayDelete = await authed()
@@ -538,7 +580,10 @@ describe('API under unstable network', () => {
     };
 
     updateChaos({ failureRate: 1 });
-    await authed().post('/api/sync/push').send({ deviceId: DEVICE_A, mutations: [mutation] }).expect(503);
+    await authed()
+      .post('/api/sync/push')
+      .send({ deviceId: DEVICE_A, mutations: [mutation] })
+      .expect(503);
     expect(await prisma.vitalSigns.count({ where: { cardId } })).toBe(0);
 
     updateChaos({ failureRate: 0 });
@@ -547,7 +592,9 @@ describe('API under unstable network', () => {
       .send({ deviceId: DEVICE_A, mutations: [mutation] })
       .expect(201);
     expect(applied.body.results[0].status).toBe('applied');
-    expect(applied.body.results[0].card.vitalSigns).toEqual([expect.objectContaining({ id: vitalId, pulseRate: 90 })]);
+    expect(applied.body.results[0].card.vitalSigns).toEqual([
+      expect.objectContaining({ id: vitalId, pulseRate: 90 }),
+    ]);
 
     const again = await authed()
       .post('/api/sync/push')
@@ -639,17 +686,32 @@ describe('API under unstable network', () => {
     expect(merged.body.results[0].status).toBe('merged');
     expect(merged.body.results[0].card.vitalSigns[0].pulseRate).toBe(99);
     expect(merged.body.results[0].conflicts).toEqual([
-      expect.objectContaining({ entity: 'vitalSigns', entityId: vitalId, field: 'row' }),
+      expect.objectContaining({
+        entity: 'vitalSigns',
+        entityId: vitalId,
+        field: 'row',
+      }),
     ]);
     expect(await prisma.vitalSigns.count({ where: { cardId } })).toBe(1);
-    expect(await prisma.syncConflict.count({ where: { cardId, entity: 'vitalSigns' } })).toBe(1);
+    expect(
+      await prisma.syncConflict.count({
+        where: { cardId, entity: 'vitalSigns' },
+      }),
+    ).toBe(1);
   });
 
-  async function childCount(entity: 'injurySite' | 'tourniquet' | 'vitalSigns' | 'fluid' | 'medication', cardId: string) {
-    if (entity === 'injurySite') return prisma.injurySite.count({ where: { cardId } });
-    if (entity === 'tourniquet') return prisma.tourniquet.count({ where: { cardId } });
-    if (entity === 'vitalSigns') return prisma.vitalSigns.count({ where: { cardId } });
-    if (entity === 'fluid') return prisma.fluidAdministration.count({ where: { cardId } });
+  async function childCount(
+    entity: 'injurySite' | 'tourniquet' | 'vitalSigns' | 'fluid' | 'medication',
+    cardId: string,
+  ) {
+    if (entity === 'injurySite')
+      return prisma.injurySite.count({ where: { cardId } });
+    if (entity === 'tourniquet')
+      return prisma.tourniquet.count({ where: { cardId } });
+    if (entity === 'vitalSigns')
+      return prisma.vitalSigns.count({ where: { cardId } });
+    if (entity === 'fluid')
+      return prisma.fluidAdministration.count({ where: { cardId } });
     return prisma.medication.count({ where: { cardId } });
   }
 });
