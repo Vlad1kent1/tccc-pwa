@@ -41,7 +41,14 @@ export function TacticalBoard({ mode }: { mode: "new" | "edit" }) {
   // A new casualty edits the draft until it creates its card; the draft then becomes that card's store.
   const store = card ? boardForCard(card) : id ? peekBoard(id) : mode === "new" ? draft : undefined;
 
+  // A deliberate second render pass, after hydration and before the first paint. The page is
+  // prerendered without a query string, so the server and hydration renders must see no id.
+  // Reading it here swaps the empty draft board for the real card on /casualties/new?id=X
+  // (a reload after the card was created) before anyone can type into the draft. Lazy
+  // useState would break hydration, and useSyncExternalStore would apply the id in a passive
+  // effect, leaving the draft live for a frame (P2-022).
   useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional pre-paint hydration pass, see above
     setId(new URLSearchParams(window.location.search).get("id"));
     setReady(true);
     setHydrated(true);
