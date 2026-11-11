@@ -55,7 +55,10 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
 8. Destructive DB scripts (`db:wipe`, `db:seed:mock`, `db:migrate`) have no localhost guard for humans (P1-008).
 
 ## Working on findings
-- `CODE_REVIEW.md` is the prioritized backlog: 69 findings, P0–P3. Fix one finding per branch with `/fix-finding <ID>`. After merging, record it on `main` with `/mark-fixed <ID> <hash>`.
+- The prioritized backlog (69 findings, P0–P3) is `CODE_REVIEW.md` at the repo root.
+  - It is a **local, gitignored file** that may be missing in a checkout. Never stage or commit it.
+  - Finding IDs such as P0-001 in the CLAUDE.md files refer to it.
+- When the file exists, fix one finding per branch with `/fix-finding <ID>`. After merging, record the fix with `/mark-fixed <ID> <hash>`, which edits only the local file.
 - Review a diff with `/review-diff`. The `sync-reviewer` subagent reviews diffs in `lib/sync`, `lib/db`, `apps/server/src/{sync,prisma}` and `packages/shared`.
 - Keep fixes minimal and don't reformat unrelated code.
 
@@ -72,7 +75,7 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
 - Never push, force-push, `reset --hard`, `clean -f` or drop stashes. Branch off `main` for every fix.
 
 ## Reference docs (read on demand)
-- `CODE_REVIEW.md`: findings, fix order, project profile (§6)
+- `CODE_REVIEW.md` (local, gitignored, may be missing): findings, fix order, project profile (§6)
 - `docs/requirements.md`: use cases, FR/NFR, test IDs
 - `docs/data-model.md`: server schema, Dexie tables, sync metadata
 - `docs/test-report.md`: e2e results (generated; T-10 timings are known to be invalid, P1-009)

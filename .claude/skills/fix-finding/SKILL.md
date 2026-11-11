@@ -1,6 +1,6 @@
 ---
 name: fix-finding
-description: Fix one CODE_REVIEW.md finding test-first on its own branch. Write a failing regression test, make the minimal fix, verify, and commit. Never edits CODE_REVIEW.md.
+description: Fix one finding from the local CODE_REVIEW.md test-first on its own branch. Write a failing regression test, make the minimal fix, verify, and commit. Never edits, stages or commits CODE_REVIEW.md.
 argument-hint: <finding-id, e.g. P1-005>
 disable-model-invocation: true
 allowed-tools: Bash(git fetch *), Bash(git rev-parse *), Bash(git rev-list *), Bash(git branch *), Bash(git switch -c fix/*), Bash(git add *), Bash(git commit *)
@@ -10,9 +10,11 @@ allowed-tools: Bash(git fetch *), Bash(git rev-parse *), Bash(git rev-list *), B
 
 Follow these steps in order. **Stop and ask the user** whenever a step says so, or when something does not match what `CODE_REVIEW.md` describes.
 
+`CODE_REVIEW.md` is a local, gitignored file at the repository root. It may be missing in a checkout, and it is never staged or committed.
+
 ## 1. Read the finding
 - Normalize the ID: `$0` → uppercase `P<n>-<nnn>`, so `p1-5` becomes `P1-005`.
-- Find the section `### [<ID>]` in `CODE_REVIEW.md` and read it all: Problem, Impact, Evidence, Fix and Location.
+- If `CODE_REVIEW.md` does not exist, stop and ask the user to paste the finding (Problem, Location, Fix) or to restore the file. Otherwise, find the section `### [<ID>]` in it and read it all: Problem, Impact, Evidence, Fix and Location.
 - If the section has a `- Fixed:` line, stop: it is already fixed.
 - Read every file in **Location**, plus enough callers and tests to confirm the problem still exists at HEAD. If it doesn't, stop and report.
 
@@ -56,7 +58,7 @@ Explain the options and their trade-offs, then wait.
 - Write one Conventional Commit: `fix(<client|server|shared|e2e>): <what changed> (<ID>)`.
   - Body: the bug, the fix, and the test that covers it.
   - End it with the attribution trailer the session requires.
-- **Do not edit `CODE_REVIEW.md` on this branch.**
+- **Never edit, stage or commit `CODE_REVIEW.md`.** It is local and gitignored. The finding is marked fixed with `/mark-fixed` after the merge.
 
 ## 8. Report
 Give a short summary:

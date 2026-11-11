@@ -15,7 +15,7 @@ argument-hint: "[base-ref, default: uncommitted changes]"
 ## 2. Load the rules
 - Root `CLAUDE.md`: database rules, **domain safety rules**, fragile areas.
 - Each touched package's `CLAUDE.md`: `apps/client`, `apps/server` or `packages/shared`.
-- If the change relates to a finding, read its section in `CODE_REVIEW.md`.
+- If the change relates to a finding and the local `CODE_REVIEW.md` exists (it is gitignored and optional), read its section there.
 
 ## 3. Review
 - Read each changed hunk **in full-file context**, plus the callers it affects.
@@ -32,7 +32,13 @@ argument-hint: "[base-ref, default: uncommitted changes]"
 - Verify each finding before reporting it. Prefer a few real issues over speculation.
 
 ## 4. Report (no edits)
-List findings from most to least severe (P0 → P3, using the `CODE_REVIEW.md` scale). For each:
+List findings from most to least severe, on this scale:
+- **P0 critical:** data loss or corruption, a security hole, a crash in a main flow, or wrong core results.
+- **P1 high:** a bug users will hit, or missing error handling on an important path.
+- **P2 medium:** edge-case bugs and maintainability problems that make bugs likely.
+- **P3 low:** minor clean-code issues.
+
+For each finding:
 - `[P?] title`
 - `file:line`
 - Confirmed or Suspected

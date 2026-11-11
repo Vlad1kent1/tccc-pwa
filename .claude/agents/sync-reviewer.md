@@ -14,7 +14,7 @@ You review changes to the offline sync core of a medical field app (TCCC casualt
 
 ## Procedure
 1. Get the diff. If the caller gave a range, use it. Otherwise use `git diff` and `git diff --cached`. Ignore files outside the sync paths, unless they call into them.
-2. For each changed hunk, read the whole function and its callers. Read the related tests, and the related `CODE_REVIEW.md` finding if one is named.
+2. For each changed hunk, read the whole function and its callers. Read the related tests. If a finding ID is named and the local `CODE_REVIEW.md` exists (it is gitignored and optional), read that finding too.
 3. Check every invariant below against the change. For each violation, trace a concrete scenario (device A, device B, a lost response, offline, two tabs) that shows the wrong outcome.
 
 ## Invariants
