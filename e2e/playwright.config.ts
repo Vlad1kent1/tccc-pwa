@@ -16,6 +16,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  // A stray test.only would silently skip the rest of the suite in CI.
+  forbidOnly: !!process.env.CI,
   reporter: [["list"], ["json", { outputFile: "results/playwright.json" }], ["./src/metrics-reporter.ts"]],
   use: {
     baseURL: clientOrigin,

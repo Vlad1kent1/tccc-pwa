@@ -4,9 +4,39 @@ on:
   push:
   pull_request:
 
+# A newer push to the same pull request cancels the run it replaces. Branch pushes always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # prisma.config.ts needs a URL even for `prisma generate`. Nothing connects to it.
+      DATABASE_URL: postgresql://postgres:password@localhost:5434/tccc_medical_db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm --filter server exec prisma generate
+      - run: pnpm typecheck
+      # Lint and format run even when typecheck fails, so one run reports every problem.
+      - run: pnpm lint
+        if: ${{ !cancelled() }}
+      - run: pnpm format:check
+        if: ${{ !cancelled() }}
+
   unit-and-api:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       db_test:
         image: postgres:15-alpine
@@ -17,7 +47,7 @@ jobs:
         ports:
           - 5434:5432
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d tccc_medical_db"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -30,7 +60,7 @@ jobs:
           version: 11.18.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install
       - run: pnpm --filter server exec prisma generate
@@ -40,6 +70,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       db:
         image: postgres:15-alpine
@@ -50,7 +81,7 @@ jobs:
         ports:
           - 5433:5432
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d tccc_medical_db"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -64,7 +95,7 @@ jobs:
           version: 11.18.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install
       - run: pnpm --filter server exec prisma generate
@@ -72,4 +103,16 @@ jobs:
       - run: pnpm --filter e2e exec playwright install --with-deps chromium webkit
       # Not `pnpm test:e2e`: that starts the docker-compose db_test, and CI has its own service.
       - run: pnpm --filter e2e test
+      # The aggregated report goes into the artifact below, never into a commit.
       - run: pnpm --filter e2e report
+        if: ${{ !cancelled() }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: e2e-results
+          path: |
+            e2e/results/
+            e2e/test-results/
+            docs/test-report.md
+          retention-days: 14
+          if-no-files-found: warn
