@@ -82,7 +82,6 @@ const reason = [
   `Checks on the files edited this turn failed (passed: ${passed.join(", ") || "none"}).`,
   "Fix these errors, or tell the user exactly what still fails and why:",
   ...failures,
-  "Known pre-existing failure: apps/client/src/components/pages/casualties/board/tactical-board/index.tsx react-hooks/set-state-in-effect (P2-022).",
 ].join("\n\n");
 process.stdout.write(JSON.stringify({ decision: "block", reason: reason.slice(0, 8000) }));
 process.exit(0);

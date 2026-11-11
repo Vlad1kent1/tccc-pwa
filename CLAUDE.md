@@ -63,10 +63,14 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
 - Keep fixes minimal and don't reformat unrelated code.
 
 ## Current tooling state
-- Client lint has one known error (`board/tactical-board/index.tsx` `set-state-in-effect`, P2-022).
-- Server files are not Prettier-formatted yet, so `pnpm format:check` fails until the repo-wide format commit. The edit hook formats a file only if it was already clean at HEAD.
-- The Windows checkout uses CRLF (`core.autocrlf=true`). `.gitattributes` normalizes to LF.
-- CI (`.github/workflows/test.yml`) runs tests only, with no lint or typecheck (P2-030).
+- `pnpm typecheck`, `pnpm lint`, `pnpm format:check` and `pnpm test` all pass on `main`. Treat any failure as a regression.
+- CI (`.github/workflows/test.yml`) runs three jobs on Node 24 (`engines.node` is `>=24`):
+  - `checks`: typecheck, lint and format check;
+  - `unit-and-api`: unit tests and the server API suite;
+  - `e2e`: Playwright, uploading results and traces as an artifact.
+- Client `typecheck` runs `next typegen` first, so it works on a clean checkout without `next-env.d.ts` or `.next`.
+- Server files are Prettier-formatted. The edit hook runs `prettier --write` on a server file only if it was clean at HEAD.
+- `.gitattributes` stores text with LF. On Windows (`core.autocrlf=true`), files checked out before it may still have CRLF in the working tree; git normalizes them on commit.
 
 ## Git
 - Conventional Commits: `type(scope): description`.

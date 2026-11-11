@@ -22,8 +22,4 @@ A table:
 
 Under it, put the failing files and errors, at most about 10 lines per check. For the tests, show the counts per package (passed, failed, skipped).
 
-Mark these known pre-existing failures as **expected**, not regressions:
-- `pnpm lint`: exactly one error in `apps/client/src/components/pages/casualties/board/tactical-board/index.tsx` (`react-hooks/set-state-in-effect`, P2-022) until that finding is fixed.
-- `pnpm format:check`: every hand-written server file, until the repo-wide Prettier commit lands on `main`.
-
-Anything else that fails is a regression: say so plainly at the top of the report.
+All four checks pass on `main`, and CI runs the same commands. Any failure is a regression: say so plainly at the top of the report.
