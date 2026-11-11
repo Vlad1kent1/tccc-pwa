@@ -77,6 +77,8 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 apps/*/.claude/
 packages/*/.claude/
 e2e/.claude/
+# The code review report is a local working file, never committed.
+/CODE_REVIEW.md
 # Re-created by `next dev`; its guidance now lives in apps/client/CLAUDE.md.
 apps/client/AGENTS.md
 .cursor/
