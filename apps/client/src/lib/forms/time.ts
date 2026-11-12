@@ -50,9 +50,13 @@ export function formatDateInput(iso: string | null): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** Last `HHMM` or `H:MM` token in a time box. */
+/**
+ * Last complete `HHMM` or `H:MM` token in a time box. Three digits are not a time:
+ * "140" is how "1405" looks one keystroke early, and saving it as 01:40 would anchor
+ * the next keystroke a day off (P0-001).
+ */
 export function lastTimeToken(value: string): string {
-  const matches = value.match(/\d{1,2}:\d{2}|\d{3,4}/g);
+  const matches = value.match(/(?<!\d)(?:\d{1,2}:\d{2}|\d{4})(?!\d)/g);
   return matches?.at(-1) ?? "";
 }
 

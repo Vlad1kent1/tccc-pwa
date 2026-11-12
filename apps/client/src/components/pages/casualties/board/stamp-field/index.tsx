@@ -10,11 +10,13 @@ export function StampField({
   label,
   value,
   onChange,
+  onFocus,
   onBlur,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  onFocus?: () => void;
   onBlur?: () => void;
 }) {
   const { t } = useT();
@@ -34,6 +36,7 @@ export function StampField({
           placeholder={t("actions.timeHint")}
           value={value}
           onChange={(event) => onChange(maskHmm(event.target.value))}
+          onFocus={onFocus}
           onBlur={onBlur}
         />
         <NowButton onClick={() => onChange(applyNowStamp())} />

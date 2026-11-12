@@ -336,6 +336,21 @@ describe("paper columns", () => {
     await casualtyRepo.softDelete(id);
   });
 
+  it("saves a vitals time typed digit by digit on today, with no injury time (P0-001)", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(2026, 10, 10, 14, 10, 0));
+      const board = draft();
+      expect(board.getSnapshot().identity.injuredAt).toBeNull();
+      for (const time of ["1", "14", "140", "1405"]) saveVitalSlot(board, 0, { time });
+
+      const row = paperRow(board.getSnapshot(), board.getSnapshot().vitals, vitalColumn(0));
+      expect(row?.measuredAt).toBe(new Date(2026, 10, 10, 14, 5, 0).toISOString());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("creates one row when typing into an empty column past the filled ones", async () => {
     const { id, board } = await openWithVitals([1]);
     saveVitalSlot(board, 3, { pulse: "9" });

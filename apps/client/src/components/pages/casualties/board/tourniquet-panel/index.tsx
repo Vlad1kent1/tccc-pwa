@@ -36,6 +36,11 @@ function TourniquetCard({ limb, region, label }: { limb: Limb; region: BodyRegio
   const injuredAt = useSlice((state) => state.identity.injuredAt);
   const [timeText, setTimeText] = useState("");
   const timeLock = useRef(false);
+  /**
+   * The applied time when the time box was focused. Keystrokes anchor on it, never on what an earlier
+   * keystroke saved (P0-001). Undefined outside a focused edit (e.g. the Now button), which uses the row.
+   */
+  const timeAnchor = useRef<string | null | undefined>(undefined);
   const canonical = row ? formatHmm(row.appliedAt) : "";
 
   useEffect(() => {
@@ -71,11 +76,18 @@ function TourniquetCard({ limb, region, label }: { limb: Limb; region: BodyRegio
           const typed = (row?.type ?? "").trim();
           timeLock.current = true;
           setTimeText(next);
-          const iso = timeTokenToIso(lastTimeToken(next), { near: row?.appliedAt, notBefore: injuredAt });
+          const near = timeAnchor.current === undefined ? row?.appliedAt : timeAnchor.current;
+          const iso = timeTokenToIso(lastTimeToken(next), { near, notBefore: injuredAt });
           if (!iso || !typed) return;
           board.setTourniquetTime(region, iso);
         }}
-        onBlur={() => board.flush()}
+        onFocus={() => {
+          timeAnchor.current = row?.appliedAt ?? null;
+        }}
+        onBlur={() => {
+          timeAnchor.current = undefined;
+          return board.flush();
+        }}
       />
     </div>
   );

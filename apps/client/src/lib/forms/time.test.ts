@@ -25,6 +25,26 @@ describe("time stamps", () => {
     expect(lastTimeToken("14:05")).toBe("14:05");
   });
 
+  it("reads only complete time tokens, so a half-typed time is not a time (P0-001)", () => {
+    expect(lastTimeToken("140")).toBe("");
+    expect(lastTimeToken("905")).toBe("");
+    expect(lastTimeToken("14:0")).toBe("");
+    expect(lastTimeToken("9:05")).toBe("9:05");
+    expect(lastTimeToken("0930 143")).toBe("0930");
+    expect(lastTimeToken("21405")).toBe("");
+    expect(lastTimeToken("123:45")).toBe("");
+    expect(lastTimeToken("14:055")).toBe("");
+  });
+
+  it("keeps a time typed digit by digit on today when each save anchors the next (P0-001)", () => {
+    const now = new Date(2026, 10, 10, 14, 10, 0);
+    let stored: string | null = null;
+    for (const text of ["1", "14", "140", "1405"]) {
+      stored = timeTokenToIso(lastTimeToken(text), { now, near: stored, notBefore: null }) ?? stored;
+    }
+    expect(stored).toBe(new Date(2026, 10, 10, 14, 5, 0).toISOString());
+  });
+
   it("joins a date with the latest time token", () => {
     const iso = joinDateAndTime("2026-10-07", "0930 1435", null, NOW);
     expect(iso).toBeTruthy();
