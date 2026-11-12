@@ -33,6 +33,9 @@ jobs:
         if: ${{ !cancelled() }}
       - run: pnpm format:check
         if: ${{ !cancelled() }}
+      # Fails on any new high or critical advisory in a runtime dependency (P0-003).
+      - run: pnpm audit --prod --audit-level high
+        if: ${{ !cancelled() }}
 
   unit-and-api:
     runs-on: ubuntu-latest

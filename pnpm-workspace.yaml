@@ -12,16 +12,14 @@ allowBuilds:
   sharp: false
   unrs-resolver: false
   workerd: true
-minimumReleaseAgeExclude:
-  - '@next/env@16.3.6'
-  - '@next/eslint-plugin-next@16.3.6'
-  - '@next/swc-darwin-arm64@16.3.6'
-  - '@next/swc-darwin-x64@16.3.6'
-  - '@next/swc-linux-arm64-gnu@16.3.6'
-  - '@next/swc-linux-arm64-musl@16.3.6'
-  - '@next/swc-linux-x64-gnu@16.3.6'
-  - '@next/swc-linux-x64-musl@16.3.6'
-  - '@next/swc-win32-arm64-msvc@16.3.6'
-  - '@next/swc-win32-x64-msvc@16.3.6'
-  - eslint-config-next@16.3.6
-  - next@16.3.6
+# Prod-path advisories that upstream still pins exactly. All are build- or CLI-time only and never see
+# request input. Remove each entry once its parent ships a patched version (follow-up to P0-003).
+auditConfig:
+  ignoreGhsas:
+    # @serwist/build (service-worker build) pins zod 4.4.3 and browserslist 4.28.6
+    - GHSA-mrhx-c7xc-m3w5
+    - GHSA-c83g-rgw3-j3cx
+    - GHSA-73wf-gq98-2v4g
+    # prisma CLI pins mysql2 3.15.3 (unused, PostgreSQL only) and @prisma/config pins deepmerge-ts 7.1.5
+    - GHSA-3f6p-5ww8-9rcr
+    - GHSA-ggr8-5vv4-36mx
