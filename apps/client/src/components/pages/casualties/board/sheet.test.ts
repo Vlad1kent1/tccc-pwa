@@ -3,7 +3,7 @@ import { FluidKind, Limb, Route, newId } from "@tccc/shared";
 import { casualtyRepo, db as appDb, type LocalCasualtyCard } from "@/lib/db";
 import { clearSaveStatus, getSaveStatus } from "@/lib/forms/save-status";
 import { saveVitalSlot } from "@/components/pages/casualties/board/rows";
-import { applySheetChange, sheetValues } from "@/components/pages/casualties/board/sheet";
+import { applySheetChange, sheetFormSource, sheetValues } from "@/components/pages/casualties/board/sheet";
 import { boardForCard, flushAllBoards, releaseBoard, retainBoard, type BoardStore } from "@/components/pages/casualties/board/store";
 
 let mounted: BoardStore[] = [];
@@ -73,6 +73,31 @@ describe("DD1380 sheet on the board store", () => {
       expect((await stored(card.id)).tourniquets.find((row) => row.limb === Limb.LEFT_LEG)?.appliedAt).toBe(appliedAt);
       expect(sheetValues(sheet.getSnapshot()).l_leg_time).toBe(time);
     }
+  });
+
+  it("restores the stored tourniquet type when the type is left blank, and keeps its time on retype (P0-002)", async () => {
+    const card = await cardWith({ lastName: "Adler" });
+    const appliedAt = new Date(2026, 9, 1, 14, 5).toISOString();
+    await casualtyRepo.upsertChild(card.id, "tourniquet", { limb: Limb.RIGHT_ARM, type: "CAT", appliedAt });
+    const original = (await stored(card.id)).tourniquets[0]!;
+    const sheet = await openSheet(card.id);
+    const source = sheetFormSource(sheet);
+
+    for (const text of ["CA", "C", ""]) applySheetChange(sheet, { r_arm_type: text });
+    expect(sheetValues(sheet.getSnapshot()).r_arm_type).toBe("");
+    await sheet.flush();
+    const kept = (await stored(card.id)).tourniquets.filter((row) => row.deletedAt == null);
+    expect(kept).toEqual([expect.objectContaining({ id: original.id, appliedAt })]);
+
+    // Leaving the blank type box puts the stored type back and asks for the hint.
+    expect(source.blur?.("r_arm_type")).toBe(true);
+    expect(sheetValues(sheet.getSnapshot()).r_arm_type).toBe(kept[0]!.type);
+    expect(source.blur?.("r_arm_type")).toBe(false);
+
+    for (const text of ["", "S", "SO", "SOFTT", "SOFTT-W"]) applySheetChange(sheet, { r_arm_type: text });
+    await sheet.flush();
+    const fresh = (await stored(card.id)).tourniquets.filter((row) => row.deletedAt == null);
+    expect(fresh).toEqual([expect.objectContaining({ id: original.id, type: "SOFTT-W", appliedAt })]);
   });
 
   it("leaves a multi-word last name alone when another field changes, and splits on a comma", async () => {

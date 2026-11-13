@@ -106,7 +106,7 @@ interface SheetPlan {
   responder: Partial<BoardSnapshot["responder"]>;
   /** `undefined`: notes unchanged. */
   notes?: string | null;
-  /** A blank `type` removes the tourniquet; no `appliedAt` keeps the stored time or stamps a new one now. */
+  /** No `appliedAt` keeps the stored time or stamps a new one now. A blank type is never planned (P0-002). */
   tourniquets: { limb: Limb; type: string; appliedAt?: string }[];
   injuries?: BoardSnapshot["injuries"];
 }
@@ -141,11 +141,10 @@ function planSheet(snapshot: BoardSnapshot, values: Dd1380Values, keys: readonly
   const limbs = new Set(keys.flatMap((key) => LIMB_KEY.exec(key)?.[1] ?? []).map((prefix) => LIMB_OF_PREFIX[prefix]!));
   for (const slot of limbSlots(values)) {
     if (!limbs.has(slot.limb)) continue;
+    // A blank type is a type being corrected, not a removal: the board's Remove button deletes a
+    // tourniquet, and leaving the blank box puts the stored type back (`leaveSheetField`).
+    if (!slot.type) continue;
     const existing = snapshot.tourniquets.find((row) => row.limb === slot.limb);
-    if (!slot.type) {
-      if (existing) plan.tourniquets.push({ limb: slot.limb, type: "" });
-      continue;
-    }
     // A blank or unfinished time keeps the stored one. Paper times hold minutes only,
     // so a time that reads back as the same minute is not rewritten.
     const typed = parseCardStamp("", slot.time, { near: existing?.appliedAt, notBefore: snapshot.identity.injuredAt });
@@ -266,6 +265,21 @@ export function applySheetChange(store: BoardStore, changes: Readonly<Record<str
 }
 
 /**
+ * A sheet field lost focus. A tourniquet type left blank while the card still has that
+ * tourniquet shows the stored type again, so the sheet never reads as if it were removed.
+ * True when it did, so the field can tell the medic how a tourniquet is removed.
+ */
+export function leaveSheetField(store: BoardStore, key: string): boolean {
+  const snapshot = store.getSnapshot();
+  const prefix = /^(r_arm|l_arm|r_leg|l_leg)_type$/.exec(key)?.[1];
+  const text = snapshot.sheetText[key];
+  if (!prefix || text === undefined || text.trim() !== "") return false;
+  if (!snapshot.tourniquets.some((row) => row.limb === LIMB_OF_PREFIX[prefix])) return false;
+  store.dropSheetText([key]);
+  return true;
+}
+
+/**
  * The sheet's form source over a board store: fields read the values derived from
  * the store snapshot and write through `applySheetChange`. Stable for a store.
  */
@@ -274,5 +288,6 @@ export function sheetFormSource(store: BoardStore): Dd1380FormSource {
     getValues: () => sheetValues(store.getSnapshot()),
     subscribe: store.subscribe,
     patch: (changes) => applySheetChange(store, changes),
+    blur: (name) => leaveSheetField(store, name),
   };
 }

@@ -389,13 +389,21 @@ export class BoardStore {
     if (limb) this.setLimbTourniquet(limb, type, appliedAt);
   };
 
-  /** A blank type removes the limb's tourniquet. Without `appliedAt` a new one is stamped now. */
+  /**
+   * Sets the limb's tourniquet type. Without `appliedAt` an existing one keeps its time and a new
+   * one is stamped now. A blank type changes nothing: it is a type being corrected, and only
+   * `removeTourniquet` deletes a tourniquet (P0-002).
+   */
   setLimbTourniquet = (limb: Limb, type: string, appliedAt?: string): void => {
     const trimmed = type.trim().slice(0, 50);
-    const tourniquets = trimmed
-      ? this.upsertTourniquet(limb, trimmed, appliedAt)
-      : this.snapshot.tourniquets.filter((row) => row.limb !== limb);
-    this.touch("body", { tourniquets }, [], trimmed ? "debounce" : "now");
+    if (!trimmed) return;
+    this.touch("body", { tourniquets: this.upsertTourniquet(limb, trimmed, appliedAt) }, [], "debounce");
+  };
+
+  /** The explicit Remove action: the only way a tourniquet is deleted. */
+  removeTourniquet = (limb: Limb): void => {
+    if (!this.snapshot.tourniquets.some((row) => row.limb === limb)) return;
+    this.touch("body", { tourniquets: this.snapshot.tourniquets.filter((row) => row.limb !== limb) }, [], "now");
   };
 
   setTourniquetTime = (region: BodyRegion, appliedAt: string): void => {
@@ -449,6 +457,14 @@ export class BoardStore {
   /** Text as typed on the DD1380 sheet. Shown, never saved; see `board/sheet`. */
   setSheetText = (text: Readonly<Record<string, string>>): void => {
     this.snapshot = { ...this.snapshot, sheetText: { ...this.snapshot.sheetText, ...text } };
+    this.emit();
+  };
+
+  /** Drops typed sheet text, so those fields show the stored values again. */
+  dropSheetText = (keys: readonly string[]): void => {
+    if (!keys.some((key) => key in this.snapshot.sheetText)) return;
+    const sheetText = Object.fromEntries(Object.entries(this.snapshot.sheetText).filter(([key]) => !keys.includes(key)));
+    this.snapshot = { ...this.snapshot, sheetText };
     this.emit();
   };
 

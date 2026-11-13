@@ -4,6 +4,7 @@ import {
   BodyView,
   CirculationTreatment,
   FluidKind,
+  Limb,
   MedicationCategory,
   Route,
   newId,
@@ -194,6 +195,54 @@ describe("board store", () => {
     expect(card).toMatchObject({ tqJunctional: true, tqExtremity: false });
     expect(card?.circulation).toEqual([CirculationTreatment.TOURNIQUET]);
     await casualtyRepo.softDelete(id);
+  });
+
+  it("keeps a tourniquet's id and applied time when its type is cleared and retyped (P0-002)", async () => {
+    const appliedAt = new Date(2026, 9, 1, 14, 5).toISOString();
+    const card = await casualtyRepo.create({ lastName: "Adler" });
+    await casualtyRepo.upsertChild(card.id, "tourniquet", { limb: Limb.RIGHT_ARM, type: "CAT", appliedAt });
+    const original = (await casualtyRepo.getById(card.id))!.tourniquets[0]!;
+    const board = await open(card);
+    const before = await appDb.outbox.where("cardId").equals(card.id).count();
+
+    // Backspace "CAT" to blank, then the type box loses focus while blank.
+    for (const text of ["CA", "C", ""]) board.setLimbTourniquet(Limb.RIGHT_ARM, text);
+    await board.flush();
+    expect(activeTourniquets(await casualtyRepo.getById(card.id))).toEqual([
+      expect.objectContaining({ id: original.id, appliedAt }),
+    ]);
+
+    // Focus comes back and the correct type is typed key by key.
+    for (const text of ["S", "SO", "SOF", "SOFT", "SOFTT", "SOFTT-", "SOFTT-W"]) board.setLimbTourniquet(Limb.RIGHT_ARM, text);
+    await board.flush();
+
+    const fresh = await casualtyRepo.getById(card.id);
+    expect(activeTourniquets(fresh)).toEqual([expect.objectContaining({ id: original.id, type: "SOFTT-W", appliedAt })]);
+    expect(board.getSnapshot().tourniquets).toEqual([expect.objectContaining({ id: original.id, type: "SOFTT-W", appliedAt })]);
+    const queued = (await appDb.outbox.where("cardId").equals(card.id).toArray()).slice(before);
+    expect(queued.some((entry) => entry.op === "child.delete")).toBe(false);
+    await casualtyRepo.softDelete(card.id);
+  });
+
+  it("deletes a tourniquet only through the explicit Remove action (P0-002)", async () => {
+    const appliedAt = new Date(2026, 9, 1, 14, 5).toISOString();
+    const card = await casualtyRepo.create({ lastName: "Adler" });
+    await casualtyRepo.upsertChild(card.id, "tourniquet", { limb: Limb.LEFT_LEG, type: "CAT", appliedAt });
+    const board = await open(card);
+
+    board.setLimbTourniquet(Limb.LEFT_LEG, "");
+    await board.flush();
+    expect(activeTourniquets(await casualtyRepo.getById(card.id))).toEqual([
+      expect.objectContaining({ limb: Limb.LEFT_LEG, type: "CAT", appliedAt }),
+    ]);
+
+    board.removeTourniquet(Limb.LEFT_LEG);
+    await board.flush();
+    expect(activeTourniquets(await casualtyRepo.getById(card.id))).toEqual([]);
+    expect(board.getSnapshot().tourniquets).toEqual([]);
+    const queued = await appDb.outbox.where("cardId").equals(card.id).toArray();
+    expect(queued.some((entry) => entry.op === "child.delete" && entry.entity === "tourniquet")).toBe(true);
+    await casualtyRepo.softDelete(card.id);
   });
 
   it("keeps a partial last 4 on screen without saving or flagging it", async () => {
@@ -547,6 +596,10 @@ describe("board save failures", () => {
     await casualtyRepo.softDelete(second.id);
   });
 });
+
+function activeTourniquets(card: LocalCasualtyCard | undefined) {
+  return (card?.tourniquets ?? []).filter((row) => row.deletedAt == null);
+}
 
 function vitalInput(pulseRate: number) {
   return {

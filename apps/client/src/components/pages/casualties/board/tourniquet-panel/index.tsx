@@ -43,6 +43,12 @@ function TourniquetCard({ limb, region, label }: { limb: Limb; region: BodyRegio
   const timeAnchor = useRef<string | null | undefined>(undefined);
   const timeBox = useTimeBox(`tourniquet:${limb}`, "body");
   const canonical = row ? formatHmm(row.appliedAt) : "";
+  /**
+   * The type as typed while the box is focused. A blank type is shown but never saved: it is a type
+   * being corrected, and only Remove deletes a tourniquet (P0-002). Null shows the stored type.
+   */
+  const [typeText, setTypeText] = useState<string | null>(null);
+  const [removeHint, setRemoveHint] = useState(false);
 
   useEffect(() => {
     setTimeText((current) => {
@@ -62,14 +68,28 @@ function TourniquetCard({ limb, region, label }: { limb: Limb; region: BodyRegio
           maxLength={50}
           autoComplete="off"
           placeholder={t("block4.typePlaceholder")}
-          value={row?.type ?? ""}
+          value={typeText ?? row?.type ?? ""}
           onChange={(event) => {
+            const next = event.target.value;
+            setTypeText(next);
+            setRemoveHint(false);
+            if (!next.trim()) return;
             const iso = timeTokenToIso(lastTimeToken(timeText), { near: row?.appliedAt, notBefore: injuredAt });
-            board.setTourniquet(region, event.target.value, iso ?? undefined);
+            board.setTourniquet(region, next, iso ?? undefined);
           }}
-          onBlur={() => board.flush()}
+          onBlur={() => {
+            // A blank type left behind shows the stored type again; Remove is how it is deleted.
+            setRemoveHint(Boolean(row) && typeText != null && !typeText.trim());
+            setTypeText(null);
+            return board.flush();
+          }}
         />
       </label>
+      {removeHint ? (
+        <p role="status" className="text-sm text-muted">
+          {t("block4.removeHint")}
+        </p>
+      ) : null}
       <StampField
         label={t("block4.time")}
         value={timeText}
@@ -92,6 +112,21 @@ function TourniquetCard({ limb, region, label }: { limb: Limb; region: BodyRegio
         }}
         invalid={timeBox.unfinished}
       />
+      {row ? (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          aria-label={t("block4.removeLabel", { limb: label })}
+          onClick={() => {
+            if (!window.confirm(t("block4.removeConfirm", { limb: label, time: formatHmm(row.appliedAt) }))) return;
+            setTypeText(null);
+            setRemoveHint(false);
+            board.removeTourniquet(limb);
+          }}
+        >
+          {t("block4.remove")}
+        </button>
+      ) : null}
     </div>
   );
 }

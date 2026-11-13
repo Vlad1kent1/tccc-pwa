@@ -1,12 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { createContext, memo, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
+import { createContext, memo, useContext, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { BodyView, type BodyView as BodyViewName } from "@tccc/shared";
 import bodyBack from "@/components/pages/casualties/dd1380/assets/body-back.png";
 import bodyFront from "@/components/pages/casualties/dd1380/assets/body-front.png";
 import { useCardCopy } from "@/components/pages/casualties/dd1380/copy";
-import { useChecked, useFieldId } from "@/components/pages/casualties/dd1380/form-context";
+import { useChecked, useFieldBlur, useFieldId } from "@/components/pages/casualties/dd1380/form-context";
+import { useT } from "@/i18n/use-t";
 import { ANTERIOR_SITES, POSTERIOR_SITES, type InjurySite } from "@/components/pages/casualties/dd1380/injury-sites";
 import { FigureMark } from "@/components/pages/casualties/board/figure-mark";
 import { figureMarkStyle } from "@/components/pages/casualties/board/regions";
@@ -103,6 +104,10 @@ const LimbColumn = memo(function LimbColumn({
 
 const Tourniquet = memo(function Tourniquet({ limb, field }: { limb: string; field: string }) {
   const copy = useCardCopy();
+  const { t } = useT();
+  const leaveType = useFieldBlur(`${field}_type`);
+  // A blank type is not a removal: the stored type comes back on blur, with this hint (P0-002).
+  const [removeHint, setRemoveHint] = useState(false);
   return (
     <div className="border border-black px-[0.4em] py-[0.35em] leading-tight">
       <div className="font-bold">
@@ -110,8 +115,13 @@ const Tourniquet = memo(function Tourniquet({ limb, field }: { limb: string; fie
       </div>
       <div className="mt-[0.28em] flex items-end gap-[0.25em]">
         <span className="font-bold">{copy.type}</span>
-        <Line name={`${field}_type`} />
+        <Line name={`${field}_type`} onBlur={() => setRemoveHint(leaveType())} />
       </div>
+      {removeHint ? (
+        <p role="status" className="mt-[0.18em] text-[0.85em] font-normal italic print:hidden">
+          {t("block4.removeHint")}
+        </p>
+      ) : null}
       <div className="mt-[0.18em] flex items-end gap-[0.25em]">
         <span className="font-bold">{copy.tqTime}</span>
         <Line name={`${field}_time`} />

@@ -16,6 +16,8 @@ export interface Dd1380FormSource {
   getValues: () => Dd1380Values;
   subscribe: (listener: () => void) => () => void;
   patch: (changes: Record<string, string | boolean>) => void;
+  /** A field lost focus. True when the source put a stored value back, so the field shows a hint. */
+  blur?: (name: string) => boolean;
 }
 
 const FormContext = createContext<Dd1380FormSource | null>(null);
@@ -54,6 +56,12 @@ export function useTextValue(name: string): [string, (value: string) => void] {
   const value = useFieldValue(name);
   const set = useCallback((next: string) => source.patch({ [name]: next }), [source, name]);
   return [typeof value === "string" ? value : "", set];
+}
+
+/** Tells the source a field lost focus. True when it put a stored value back. */
+export function useFieldBlur(name: string): () => boolean {
+  const source = useForm();
+  return useCallback(() => source.blur?.(name) ?? false, [source, name]);
 }
 
 export function useChecked(name: string): [boolean, (checked: boolean) => void] {
