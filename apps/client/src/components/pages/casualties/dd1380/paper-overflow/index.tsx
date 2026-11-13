@@ -2,7 +2,7 @@
 
 import { useCardCopy, type CardCopy } from "@/components/pages/casualties/dd1380/use-card-copy";
 import { hiddenRows, type PaperTableName } from "@tccc/dd1380";
-import { useSlice } from "@/components/pages/casualties/board/store";
+import { useSlice } from "@/lib/board";
 
 const LABEL: Readonly<Record<PaperTableName, keyof CardCopy>> = {
   vitals: "overflowVitals",

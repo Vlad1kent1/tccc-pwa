@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { useT } from "@/i18n/use-t";
 import { CardLoading, MissingCard } from "@/components/ui/missing-card";
+import { RemoteBanner } from "@/components/shared/remote-banner";
 import { useLocalCard } from "@/components/pages/casualties/use-local-card";
 import { FluidsBlock } from "@/components/pages/casualties/board/block-fluids";
 import { IdentificationBlock } from "@/components/pages/casualties/board/block-identification";
@@ -19,15 +20,13 @@ import { SaveBar } from "@/components/pages/casualties/board/save-bar";
 import { TreatmentBlock } from "@/components/pages/casualties/board/block-treatments";
 import { VitalsBlock } from "@/components/pages/casualties/board/block-vitals";
 import {
-  BoardProvider,
   boardForCard,
+  BoardProvider,
   createDraftBoard,
   peekBoard,
-  useBoard,
   useFlushBoardOnHide,
   useRetainBoard,
-  useSlice,
-} from "@/components/pages/casualties/board/store";
+} from "@/lib/board";
 
 export function TacticalBoard({ mode }: { mode: "new" | "edit" }) {
   const { t } = useT();
@@ -115,26 +114,5 @@ export function TacticalBoard({ mode }: { mode: "new" | "edit" }) {
       </main>
       {mode === "new" ? <SaveBar /> : null}
     </BoardProvider>
-  );
-}
-
-/** A newer version of the card arrived while this store had unsaved edits. */
-export function RemoteBanner() {
-  const { t } = useT();
-  const board = useBoard();
-  const remote = useSlice((state) => state.remote);
-  if (!remote) return null;
-  return (
-    <div role="status" data-print-hide className="banner-warning">
-      <p className="text-sm font-medium">{t("card.remoteChange")}</p>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn btn-primary" onClick={board.keepEdits}>
-          {t("card.keepMine")}
-        </button>
-        <button type="button" className="btn btn-secondary" onClick={board.loadUpdate}>
-          {t("card.loadUpdated")}
-        </button>
-      </div>
-    </div>
   );
 }

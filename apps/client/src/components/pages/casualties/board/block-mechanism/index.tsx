@@ -6,7 +6,7 @@ import { useT } from "@/i18n/use-t";
 import { fieldClass } from "@/components/ui/field";
 import { Block } from "@/components/pages/casualties/board/block";
 import { CheckOption } from "@/components/pages/casualties/board/check-option";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useSlice } from "@/lib/board";
 
 const ITEMS = [
   [MechanismOfInjury.ARTILLERY, "block3.artillery"],

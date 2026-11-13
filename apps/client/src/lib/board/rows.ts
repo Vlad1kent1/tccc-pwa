@@ -7,10 +7,10 @@ import {
 } from "@tccc/shared";
 import { lastTimeToken, timeTokenToIso } from "@/lib/forms/time";
 import { networkNowIso } from "@/lib/network-clock";
-import { boundedInt } from "@/components/pages/casualties/board/entry";
+import { boundedInt } from "./entry";
 import { fluidColumn, medicationColumn, vitalColumn } from "@tccc/dd1380";
-import type { BoardStore } from "@/components/pages/casualties/board/store";
-import type { BoardSnapshot } from "@/components/pages/casualties/board/snapshot";
+import type { BoardStore } from "./store";
+import type { BoardSnapshot } from "./snapshot";
 
 type Vital = BoardSnapshot["vitals"][number];
 type Fluid = BoardSnapshot["fluids"][number];

@@ -6,7 +6,7 @@ import { useT } from "@/i18n/use-t";
 import { formatHmm, lastTimeToken, placeEditedTime, timeTokenToIso } from "@/lib/forms/time";
 import { fieldClass } from "@/components/ui/field";
 import { StampField } from "@/components/pages/casualties/board/stamp-field";
-import { useBoard, useSlice, useTimeBox } from "@/components/pages/casualties/board/store";
+import { useBoard, useSlice, useTimeBox } from "@/lib/board";
 
 const LIMBS = [
   [Limb.RIGHT_ARM, BodyRegion.RIGHT_ARM, "block4.rightArm"],

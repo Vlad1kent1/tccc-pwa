@@ -3,7 +3,7 @@
 import { memo, useLayoutEffect, useRef } from "react";
 import { useT } from "@/i18n/use-t";
 import { Block } from "@/components/pages/casualties/board/block";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useSlice } from "@/lib/board";
 
 export const NotesBlock = memo(function NotesBlock() {
   const board = useBoard();

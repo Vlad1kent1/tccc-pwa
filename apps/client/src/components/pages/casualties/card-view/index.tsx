@@ -9,16 +9,17 @@ import type { LocalCasualtyCard } from "@/lib/db";
 import { CardLoading, MissingCard } from "@/components/ui/missing-card";
 import { SyncBadge } from "@/components/shared/sync-badge";
 import { useLocalCard } from "@/components/pages/casualties/use-local-card";
-import { sheetFormSource, sheetMarks } from "@/components/pages/casualties/board/sheet";
-import { RemoteBanner } from "@/components/pages/casualties/board/tactical-board";
 import {
-  BoardProvider,
   boardForCard,
+  BoardProvider,
+  sheetFormSource,
+  sheetMarks,
   useBoard,
   useFlushBoardOnHide,
   useRetainBoard,
   useSlice,
-} from "@/components/pages/casualties/board/store";
+} from "@/lib/board";
+import { RemoteBanner } from "@/components/shared/remote-banner";
 
 export function CardView() {
   const params = useSearchParams();

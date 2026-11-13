@@ -12,10 +12,10 @@ import {
 import { casualtyRepo, db as appDb, type LocalCasualtyCard } from "@/lib/db";
 import { clearSaveStatus, getSaveStatus, retrySave } from "@/lib/forms/save-status";
 import { vitalColumn } from "@tccc/dd1380";
-import { paperRow, rowForColumn, saveVitalSlot } from "@/components/pages/casualties/board/rows";
+import { paperRow, rowForColumn, saveVitalSlot } from "../rows";
 import { createCasualtyRepo, type CasualtyRepo } from "@/lib/db/casualtyRepo";
 import { TcccDB } from "@/lib/db/schema";
-import { commitBoard } from "@/components/pages/casualties/board/commit";
+import { commitBoard } from "../commit";
 import {
   boardForCard,
   createDraftBoard,
@@ -25,8 +25,8 @@ import {
   releaseBoard,
   retainBoard,
   type BoardStore,
-} from "@/components/pages/casualties/board/store";
-import { emptySnapshot } from "@/components/pages/casualties/board/snapshot";
+} from "../store";
+import { emptySnapshot } from "../snapshot";
 
 const T0 = Date.UTC(2026, 9, 1, 8, 0, 0);
 

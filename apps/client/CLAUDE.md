@@ -36,7 +36,7 @@ A refactor into this layout is in progress. `components/pages/casualties/**` and
   - Known gap: board rows and paper cells still anchor to the previous keystroke's value until the P0-001 follow-up (with P2-011/P2-024).
 - **Tourniquets:** the type input never deletes a tourniquet. A tourniquet is removed only through the explicit Remove action with confirmation (P0-002). A blank type box restores the type captured on focus.
 - **Never drop input silently:** an invalid or incomplete value stays visible. It is flagged with `aria-invalid` and listed under "Not saved" in the save banner.
-- **Board** (`components/pages/casualties/board/`): edits go through `BoardStore` slices. A save trims text, so keep the raw input on screen while the field is focused (P1-007).
+- **Board** (store and row logic in `src/lib/board/`, imported from `@/lib/board`; UI in `components/pages/casualties/board/`): edits go through `BoardStore` slices. `lib/board` is shared by the board and the DD1380 sheet page, so it is reviewed like sync code (`sync-reviewer`). A save trims text, so keep the raw input on screen while the field is focused (P1-007).
 - **Service worker** (`src/app/sw.ts`): API requests stay `NetworkOnly`. Never cache casualty data or responses that carry the `Authorization` header.
 - **Errors:** never `void` a promise without `.catch`. Show failures in the save banner or the sync status.
 - **Dev tools:** the panel is gated by `NEXT_PUBLIC_DEV_TOOLS`. It can wipe the local DB, so never enable it in a production build.

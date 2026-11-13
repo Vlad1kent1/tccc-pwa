@@ -47,8 +47,8 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
 6. A failure the user can't see is a bug. Show it in the save banner or the sync status, and never swallow it.
 
 ## Fragile areas (read the code and tests before touching)
-1. Time anchoring: `apps/client/src/lib/forms/time.ts`, `lib/board/card-stamp.ts` (paper date/time → ISO), `board/rows`, `board/tourniquet-panel`, `board/stamp-field`. Keystroke-level parsing (P0-001).
-2. `BoardStore` hydrate state machine and `commitBoard`'s "delete what is not in the draft" (`board/store`, `board/commit`).
+1. Time anchoring: `apps/client/src/lib/forms/time.ts`, `lib/board/card-stamp.ts` (paper date/time → ISO), `lib/board/rows.ts`, `board/tourniquet-panel`, `board/stamp-field`. Keystroke-level parsing (P0-001).
+2. `BoardStore` hydrate state machine and `commitBoard`'s "delete what is not in the draft" (`apps/client/src/lib/board/store.ts`, `lib/board/commit.ts`).
 3. Outbox rewriters: `coalesceOutbox`, `commitRebase`, `queuedAfterDecision`, together with `rebaseCard`'s newer-local-clock-wins rule (`lib/sync/*`).
 4. `nextChangeSeq` (`apps/server/src/prisma/change-seq.ts`) must be the last statement before every card write. Nothing else may set `changeSeq`.
 5. Strict pull parsing combined with long-lived cached PWAs (`lib/sync/api.ts`, `packages/shared/src/schemas`). See P1-001.
@@ -61,7 +61,7 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
   - It is a **local, gitignored file** that may be missing in a checkout. Never stage or commit it.
   - Finding IDs such as P0-001 in the CLAUDE.md files refer to it.
 - When the file exists, fix one finding per branch with `/fix-finding <ID>`. After merging, record the fix with `/mark-fixed <ID> <hash>`, which edits only the local file.
-- Review a diff with `/review-diff`. The `sync-reviewer` subagent reviews diffs in `lib/sync`, `lib/db`, `apps/server/src/{sync,prisma}` and `packages/shared`.
+- Review a diff with `/review-diff`. The `sync-reviewer` subagent reviews diffs in `lib/sync`, `lib/db`, `lib/board`, `apps/server/src/{sync,prisma}`, `packages/shared` and `packages/dd1380`.
 - Keep fixes minimal and don't reformat unrelated code.
 
 ## Current tooling state

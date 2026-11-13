@@ -5,7 +5,7 @@ import { EvacPriority } from "@tccc/shared";
 import { useT } from "@/i18n/use-t";
 import { Block } from "@/components/pages/casualties/board/block";
 import { TextField } from "@/components/pages/casualties/board/text-field";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useSlice } from "@/lib/board";
 
 const EVAC = [
   [EvacPriority.URGENT, "block1.urgent", "border-urgent bg-urgent text-on-urgent"],

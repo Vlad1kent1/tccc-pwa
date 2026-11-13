@@ -5,12 +5,18 @@ import { Avpu, newId, type Avpu as AvpuName } from "@tccc/shared";
 import { useT } from "@/i18n/use-t";
 import { formatHmm, lastTimeToken } from "@/lib/forms/time";
 import { Block } from "@/components/pages/casualties/board/block";
-import { MAX_TABLE_ROWS, boundedInt, useSyncedField } from "@/components/pages/casualties/board/entry";
+import {
+  boundedInt,
+  MAX_TABLE_ROWS,
+  saveVitalFields,
+  useBoard,
+  useRowTimeBox,
+  useSlice,
+  useSyncedField,
+} from "@/lib/board";
 import { OptionSelect } from "@/components/pages/casualties/board/option-select";
 import { StampField } from "@/components/pages/casualties/board/stamp-field";
 import { TextField } from "@/components/pages/casualties/board/text-field";
-import { saveVitalFields } from "@/components/pages/casualties/board/rows";
-import { useBoard, useRowTimeBox, useSlice } from "@/components/pages/casualties/board/store";
 
 export const VitalsBlock = memo(function VitalsBlock() {
   const board = useBoard();

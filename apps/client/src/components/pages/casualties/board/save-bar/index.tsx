@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "@/i18n/use-t";
-import { useBoard } from "@/components/pages/casualties/board/store";
+import { useBoard } from "@/lib/board";
 
 export function SaveBar() {
   const { t } = useT();

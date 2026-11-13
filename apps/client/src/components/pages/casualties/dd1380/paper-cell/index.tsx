@@ -5,17 +5,19 @@ import { formatHmm } from "@/lib/forms/time";
 import { fluidColumn, medicationColumn, parseAvpu, parseRoute, routeToPaper, vitalColumn } from "@tccc/dd1380";
 import { useCardChoices } from "@/components/pages/casualties/dd1380/ua-fields";
 import {
+  type BoardSnapshot,
+  type FluidDraft,
+  type MedicationDraft,
   paperRow,
   rowForColumn,
   saveFluidSlot,
   saveMedicationSlot,
   saveVitalSlot,
-  type FluidDraft,
-  type MedicationDraft,
+  useBoard,
+  useRowTimeBox,
+  useSlice,
   type VitalDraft,
-} from "@/components/pages/casualties/board/rows";
-import { useBoard, useRowTimeBox, useSlice } from "@/components/pages/casualties/board/store";
-import type { BoardSnapshot } from "@/components/pages/casualties/board/snapshot";
+} from "@/lib/board";
 
 const inputClass =
   "w-full min-w-0 bg-transparent px-[0.1em] text-center font-normal text-black outline-none aria-invalid:outline-2 aria-invalid:outline-solid aria-invalid:outline-danger";

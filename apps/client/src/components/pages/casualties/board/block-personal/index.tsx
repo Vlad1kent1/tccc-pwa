@@ -7,7 +7,7 @@ import { formatDateInput, formatHmm, joinDateAndTime, lastTimeToken } from "@/li
 import { Block } from "@/components/pages/casualties/board/block";
 import { StampField } from "@/components/pages/casualties/board/stamp-field";
 import { TextField } from "@/components/pages/casualties/board/text-field";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useSlice } from "@/lib/board";
 
 export const PersonalBlock = memo(function PersonalBlock() {
   const board = useBoard();

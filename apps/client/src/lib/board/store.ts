@@ -18,7 +18,7 @@ import { isUnfinishedTime } from "@/lib/forms/time";
 import { responderPatch } from "@/lib/forms/values";
 import { networkNowIso } from "@/lib/network-clock";
 import { layoutPaper, pinPaperRow, reconcileTreatments, regionAt, unpinPaperRow } from "@tccc/dd1380";
-import { commitBoard } from "@/components/pages/casualties/board/commit";
+import { commitBoard } from "./commit";
 import {
   EMPTY_SNAPSHOT,
   emptySnapshot,
@@ -27,7 +27,7 @@ import {
   type BoardSnapshot,
   type BoardTreatments,
   type TreatmentListKey,
-} from "@/components/pages/casualties/board/snapshot";
+} from "./snapshot";
 
 export type { BoardSlice, BoardSnapshot };
 

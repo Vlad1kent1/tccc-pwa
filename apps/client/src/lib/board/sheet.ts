@@ -10,9 +10,9 @@ import {
   type SheetSource,
   type StoredMark,
 } from "@tccc/dd1380";
-import { parseCardStamp, valuesToCardPatch } from "@/lib/board/card-stamp";
-import type { BoardSnapshot, BoardTreatments } from "@/components/pages/casualties/board/snapshot";
-import type { BoardStore } from "@/components/pages/casualties/board/store";
+import { parseCardStamp, valuesToCardPatch } from "./card-stamp";
+import type { BoardSnapshot, BoardTreatments } from "./snapshot";
+import type { BoardStore } from "./store";
 
 /**
  * The DD1380 sheet is a view of the board store, not a second editor. Its values

@@ -4,7 +4,7 @@ import { memo } from "react";
 import { useT } from "@/i18n/use-t";
 import { Block } from "@/components/pages/casualties/board/block";
 import { TextField } from "@/components/pages/casualties/board/text-field";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useSlice } from "@/lib/board";
 
 export const ResponderBlock = memo(function ResponderBlock() {
   const board = useBoard();

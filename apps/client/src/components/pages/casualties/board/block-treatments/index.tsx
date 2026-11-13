@@ -5,7 +5,7 @@ import { AirwayTreatment, BreathingTreatment, CirculationTreatment } from "@tccc
 import { useT } from "@/i18n/use-t";
 import { Block } from "@/components/pages/casualties/board/block";
 import { CheckOption } from "@/components/pages/casualties/board/check-option";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useSlice } from "@/lib/board";
 import { TextField } from "@/components/pages/casualties/board/text-field";
 
 export const TreatmentBlock = memo(function TreatmentBlock() {

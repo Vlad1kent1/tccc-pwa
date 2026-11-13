@@ -1,7 +1,7 @@
 import Dexie from "dexie";
 import type { CardPatch, ChildEntity } from "@tccc/shared";
 import { isStorableChild, type CasualtyRepo, type ChildInput, type LocalCasualtyCard } from "@/lib/db";
-import type { BoardSlice, BoardSnapshot } from "@/components/pages/casualties/board/snapshot";
+import type { BoardSlice, BoardSnapshot } from "./snapshot";
 
 /** `skipped` lists sections with a row that could not be stored; every other row was written. */
 export type CommitResult = { status: "aborted" } | { status: "saved"; clientUpdatedAt: string; skipped: BoardSlice[] };

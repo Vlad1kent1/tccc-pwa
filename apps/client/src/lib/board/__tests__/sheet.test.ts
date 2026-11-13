@@ -2,9 +2,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FluidKind, Limb, Route, newId } from "@tccc/shared";
 import { casualtyRepo, db as appDb, type LocalCasualtyCard } from "@/lib/db";
 import { clearSaveStatus, getSaveStatus } from "@/lib/forms/save-status";
-import { saveVitalSlot } from "@/components/pages/casualties/board/rows";
-import { applySheetChange, sheetFormSource, sheetValues } from "@/components/pages/casualties/board/sheet";
-import { boardForCard, flushAllBoards, releaseBoard, retainBoard, type BoardStore } from "@/components/pages/casualties/board/store";
+import { saveVitalSlot } from "../rows";
+import { applySheetChange, sheetFormSource, sheetValues } from "../sheet";
+import { boardForCard, flushAllBoards, releaseBoard, retainBoard, type BoardStore } from "../store";
 
 let mounted: BoardStore[] = [];
 let created: string[] = [];
