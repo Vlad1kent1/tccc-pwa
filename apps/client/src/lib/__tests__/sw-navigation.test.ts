@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { respondNavigation, respondRsc, type NavigationDeps, type PageCache } from "./sw-navigation";
+import { respondNavigation, respondRsc, type NavigationDeps, type PageCache } from "../sw-navigation";
 
 function memoryCache(entries: Record<string, string> = {}): PageCache & { stored: Map<string, string> } {
   const stored = new Map(Object.entries(entries));

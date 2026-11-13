@@ -5,7 +5,7 @@ import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { NetworkOnly, Serwist, StaleWhileRevalidate } from "serwist";
 import { apiOrigin } from "../lib/sync/api";
 import { pushOutboxFromWorker } from "../lib/sync/worker-push";
-import { respondNavigation, respondRsc } from "./sw-navigation";
+import { respondNavigation, respondRsc } from "../lib/sw-navigation";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
