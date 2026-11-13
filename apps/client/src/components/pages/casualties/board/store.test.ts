@@ -224,6 +224,30 @@ describe("board store", () => {
     await casualtyRepo.softDelete(card.id);
   });
 
+  it("restores and saves the type from focus when slow backspacing autosaved a partial type (P0-002)", async () => {
+    const appliedAt = new Date(2026, 9, 1, 14, 5).toISOString();
+    const card = await casualtyRepo.create({ lastName: "Adler" });
+    await casualtyRepo.upsertChild(card.id, "tourniquet", { limb: Limb.RIGHT_ARM, type: "CAT", appliedAt });
+    const original = (await casualtyRepo.getById(card.id))!.tourniquets[0]!;
+    const board = await open(card);
+
+    board.focusTourniquetType(Limb.RIGHT_ARM);
+    // Slow backspacing: the autosave runs after each key.
+    for (const text of ["CA", "C", ""]) {
+      board.setLimbTourniquet(Limb.RIGHT_ARM, text);
+      await board.flush();
+    }
+    expect(activeTourniquets(await casualtyRepo.getById(card.id))[0]?.type).toBe("C");
+
+    expect(board.leaveTourniquetType(Limb.RIGHT_ARM, "")).toBe(true);
+    await board.flush();
+
+    const restored = { id: original.id, type: "CAT", appliedAt };
+    expect(board.getSnapshot().tourniquets).toEqual([expect.objectContaining(restored)]);
+    expect(activeTourniquets(await casualtyRepo.getById(card.id))).toEqual([expect.objectContaining(restored)]);
+    await casualtyRepo.softDelete(card.id);
+  });
+
   it("deletes a tourniquet only through the explicit Remove action (P0-002)", async () => {
     const appliedAt = new Date(2026, 9, 1, 14, 5).toISOString();
     const card = await casualtyRepo.create({ lastName: "Adler" });

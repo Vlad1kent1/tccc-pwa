@@ -100,6 +100,27 @@ describe("DD1380 sheet on the board store", () => {
     expect(fresh).toEqual([expect.objectContaining({ id: original.id, type: "SOFTT-W", appliedAt })]);
   });
 
+  it("restores and saves the type from focus when slow backspacing autosaved a partial type (P0-002)", async () => {
+    const card = await cardWith({ lastName: "Adler" });
+    const appliedAt = new Date(2026, 9, 1, 14, 5).toISOString();
+    await casualtyRepo.upsertChild(card.id, "tourniquet", { limb: Limb.RIGHT_ARM, type: "CAT", appliedAt });
+    const sheet = await openSheet(card.id);
+    const source = sheetFormSource(sheet);
+
+    source.focus?.("r_arm_type");
+    for (const text of ["CA", "C", ""]) {
+      applySheetChange(sheet, { r_arm_type: text });
+      await sheet.flush();
+    }
+    expect((await stored(card.id)).tourniquets.find((row) => row.deletedAt == null)?.type).toBe("C");
+
+    expect(source.blur?.("r_arm_type")).toBe(true);
+    expect(sheetValues(sheet.getSnapshot()).r_arm_type).toBe("CAT");
+    await sheet.flush();
+    const fresh = (await stored(card.id)).tourniquets.filter((row) => row.deletedAt == null);
+    expect(fresh).toEqual([expect.objectContaining({ type: "CAT", appliedAt })]);
+  });
+
   it("leaves a multi-word last name alone when another field changes, and splits on a comma", async () => {
     const card = await cardWith({ lastName: "Van Damme" });
     const sheet = await openSheet(card.id);

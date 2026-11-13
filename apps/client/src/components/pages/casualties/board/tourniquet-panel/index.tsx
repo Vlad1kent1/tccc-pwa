@@ -77,9 +77,10 @@ function TourniquetCard({ limb, region, label }: { limb: Limb; region: BodyRegio
             const iso = timeTokenToIso(lastTimeToken(timeText), { near: row?.appliedAt, notBefore: injuredAt });
             board.setTourniquet(region, next, iso ?? undefined);
           }}
+          onFocus={() => board.focusTourniquetType(limb)}
           onBlur={() => {
-            // A blank type left behind shows the stored type again; Remove is how it is deleted.
-            setRemoveHint(Boolean(row) && typeText != null && !typeText.trim());
+            // A blank type left behind restores and saves the type from focus; Remove is how it is deleted.
+            setRemoveHint(board.leaveTourniquetType(limb, typeText ?? row?.type ?? ""));
             setTypeText(null);
             return board.flush();
           }}

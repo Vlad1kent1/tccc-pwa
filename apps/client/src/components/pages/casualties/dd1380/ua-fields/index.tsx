@@ -51,6 +51,7 @@ export function Line({
   maxLength,
   inputMode,
   testId,
+  onFocus,
   onBlur,
 }: {
   name: string;
@@ -59,6 +60,7 @@ export function Line({
   maxLength?: number;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   testId?: string;
+  onFocus?: () => void;
   onBlur?: () => void;
 }) {
   const id = useFieldId(name);
@@ -75,6 +77,7 @@ export function Line({
       inputMode={inputMode}
       value={value}
       onChange={(event) => setValue(event.target.value)}
+      onFocus={onFocus}
       onBlur={onBlur}
       className={`min-w-0 border-0 border-b border-black bg-transparent px-[0.15em] font-normal text-black outline-none ${grow ? "flex-1" : ""} ${className}`}
     />

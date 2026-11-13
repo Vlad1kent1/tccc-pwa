@@ -264,17 +264,29 @@ export function applySheetChange(store: BoardStore, changes: Readonly<Record<str
   if (plan.injuries) store.editInjuries(plan.injuries);
 }
 
+function typeKeyLimb(key: string): Limb | undefined {
+  const prefix = /^(r_arm|l_arm|r_leg|l_leg)_type$/.exec(key)?.[1];
+  return prefix ? LIMB_OF_PREFIX[prefix] : undefined;
+}
+
+/** A sheet field gained focus. A tourniquet type box remembers the stored type to restore. */
+export function focusSheetField(store: BoardStore, key: string): void {
+  const limb = typeKeyLimb(key);
+  if (limb) store.focusTourniquetType(limb);
+}
+
 /**
  * A sheet field lost focus. A tourniquet type left blank while the card still has that
- * tourniquet shows the stored type again, so the sheet never reads as if it were removed.
- * True when it did, so the field can tell the medic how a tourniquet is removed.
+ * tourniquet shows, and saves, the type it had when the box was focused, so the sheet never
+ * reads as if it were removed. True when it did, so the field can tell the medic how a
+ * tourniquet is removed.
  */
 export function leaveSheetField(store: BoardStore, key: string): boolean {
+  const limb = typeKeyLimb(key);
+  if (!limb) return false;
   const snapshot = store.getSnapshot();
-  const prefix = /^(r_arm|l_arm|r_leg|l_leg)_type$/.exec(key)?.[1];
-  const text = snapshot.sheetText[key];
-  if (!prefix || text === undefined || text.trim() !== "") return false;
-  if (!snapshot.tourniquets.some((row) => row.limb === LIMB_OF_PREFIX[prefix])) return false;
+  const text = snapshot.sheetText[key] ?? sheetValues(snapshot)[key];
+  if (!store.leaveTourniquetType(limb, typeof text === "string" ? text : "")) return false;
   store.dropSheetText([key]);
   return true;
 }
@@ -288,6 +300,7 @@ export function sheetFormSource(store: BoardStore): Dd1380FormSource {
     getValues: () => sheetValues(store.getSnapshot()),
     subscribe: store.subscribe,
     patch: (changes) => applySheetChange(store, changes),
+    focus: (name) => focusSheetField(store, name),
     blur: (name) => leaveSheetField(store, name),
   };
 }

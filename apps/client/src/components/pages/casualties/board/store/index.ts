@@ -99,6 +99,8 @@ export class BoardStore {
   private unfinishedTimes = new Map<string, TimeBoxSlice>();
   /** The row time box being typed into. It is not flagged until it is left. */
   private focusedTimeBox: string | null = null;
+  /** The stored tourniquet type when its type box was focused, by limb. */
+  private readonly typeAtFocus = new Map<Limb, string>();
   /** Mounted screens using this store. The registry drops it at zero once its saves settle. */
   refs = 0;
 
@@ -398,6 +400,28 @@ export class BoardStore {
     const trimmed = type.trim().slice(0, 50);
     if (!trimmed) return;
     this.touch("body", { tourniquets: this.upsertTourniquet(limb, trimmed, appliedAt) }, [], "debounce");
+  };
+
+  /** A tourniquet type box gained focus: its stored type is what a blank box is restored to. */
+  focusTourniquetType = (limb: Limb): void => {
+    const type = this.snapshot.tourniquets.find((row) => row.limb === limb)?.type;
+    if (type) this.typeAtFocus.set(limb, type);
+    else this.typeAtFocus.delete(limb);
+  };
+
+  /**
+   * A tourniquet type box lost focus showing `text`. Left blank while the limb has a tourniquet,
+   * the type from when the box was focused is put back and saved, not a partial type an autosave
+   * stored while backspacing (P0-002). True when the box was blank, so it can show the Remove hint.
+   */
+  leaveTourniquetType = (limb: Limb, text: string): boolean => {
+    const focused = this.typeAtFocus.get(limb);
+    this.typeAtFocus.delete(limb);
+    if (text.trim()) return false;
+    const row = this.snapshot.tourniquets.find((item) => item.limb === limb);
+    if (!row) return false;
+    if (focused && focused !== row.type) this.setLimbTourniquet(limb, focused);
+    return true;
   };
 
   /** The explicit Remove action: the only way a tourniquet is deleted. */
