@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./unit-token", () => ({ readUnitToken: async () => "unit-token" }));
+vi.mock("../unit-token", () => ({ readUnitToken: async () => "unit-token" }));
 
-import { fetchHealth, isRetryableError, pullChanges, SYNC_REQUEST_TIMEOUT_MS } from "./api";
+import { fetchHealth, isRetryableError, pullChanges, SYNC_REQUEST_TIMEOUT_MS } from "../api";
 
 /** A fetch that never answers and rejects only once its signal aborts, like a hung server. */
 function hangingFetch() {

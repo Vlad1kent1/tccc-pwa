@@ -1,7 +1,7 @@
 import type { CardField } from "@tccc/shared";
 import { describe, expect, it } from "vitest";
 import type { OutboxMutation } from "@/lib/db";
-import { coalesceOutbox } from "./coalesce";
+import { coalesceOutbox } from "../coalesce";
 
 const CARD = "01999999-9999-7000-8000-000000000001";
 const OTHER = "01999999-9999-7000-8000-000000000002";

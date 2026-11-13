@@ -6,8 +6,8 @@ import { getServerClockOffset, setServerClockOffset } from "@/lib/network-clock"
 const pullChanges = vi.hoisted(() => vi.fn());
 const pushMutations = vi.hoisted(() => vi.fn());
 
-vi.mock("./api", async () => {
-  const actual = await vi.importActual<typeof import("./api")>("./api");
+vi.mock("../api", async () => {
+  const actual = await vi.importActual<typeof import("../api")>("../api");
   return {
     ...actual,
     pullChanges: (...args: unknown[]) => pullChanges(...args),
@@ -15,8 +15,8 @@ vi.mock("./api", async () => {
   };
 });
 
-import { ApiError } from "./api";
-import { chunkMutations, jsonBytes, MAX_PUSH_BYTES, MAX_PUSH_MUTATIONS, pullAll, pushOutbox } from "./pipeline";
+import { ApiError } from "../api";
+import { chunkMutations, jsonBytes, MAX_PUSH_BYTES, MAX_PUSH_MUTATIONS, pullAll, pushOutbox } from "../pipeline";
 
 const DEVICE = "01999999-9999-7000-8000-000000000099";
 const OTHER = "01999999-9999-7000-8000-0000000000bb";

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { timeTokenToIso } from "@/lib/forms/time";
-import { getNetworkAdjustedTime, setServerClockOffset } from "./network-clock";
+import { getNetworkAdjustedTime, setServerClockOffset } from "../network-clock";
 
 describe("getNetworkAdjustedTime", () => {
   beforeEach(() => {

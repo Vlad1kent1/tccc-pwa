@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getMeta } from "@/lib/db/meta";
 import { db } from "@/lib/db/schema";
-import { parseUnitToken, readUnitToken, saveUnitToken, UNIT_TOKEN_STORAGE_KEY } from "./unit-token";
+import { parseUnitToken, readUnitToken, saveUnitToken, UNIT_TOKEN_STORAGE_KEY } from "../unit-token";
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>();

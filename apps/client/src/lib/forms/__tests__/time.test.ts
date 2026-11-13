@@ -9,7 +9,7 @@ import {
   placeEditedTime,
   sameMinute,
   timeTokenToIso,
-} from "./time";
+} from "../time";
 
 const NOW = new Date(2026, 9, 7, 14, 35, 0);
 

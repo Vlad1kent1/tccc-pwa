@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HEALTH_TIMEOUT_MS, probeConnectivity } from "./connectivity";
+import { HEALTH_TIMEOUT_MS, probeConnectivity } from "../connectivity";
 
 beforeEach(() => {
   Object.defineProperty(navigator, "onLine", { configurable: true, get: () => true });

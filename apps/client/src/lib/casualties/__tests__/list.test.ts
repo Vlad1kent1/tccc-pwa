@@ -1,6 +1,6 @@
 import { formatHlc } from "@tccc/shared";
 import { describe, expect, it } from "vitest";
-import { listCasualties, type ListCard } from "./list";
+import { listCasualties, type ListCard } from "../list";
 
 function card(partial: Partial<ListCard> & Pick<ListCard, "evacPriority" | "clientUpdatedAt">): ListCard {
   return {

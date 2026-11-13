@@ -4,13 +4,13 @@ import { TcccDB, type LocalCasualtyCard, type LocalConflict, type OutboxMutation
 
 const resolveConflict = vi.hoisted(() => vi.fn());
 
-vi.mock("./api", async () => {
-  const actual = await vi.importActual<typeof import("./api")>("./api");
+vi.mock("../api", async () => {
+  const actual = await vi.importActual<typeof import("../api")>("../api");
   return { ...actual, resolveConflict: (...args: unknown[]) => resolveConflict(...args) };
 });
 
-import { queuedAfterDecision, resolveLocalConflict, restoreDiscarded } from "./conflicts";
-import { withSyncLock } from "./lock";
+import { queuedAfterDecision, resolveLocalConflict, restoreDiscarded } from "../conflicts";
+import { withSyncLock } from "../lock";
 
 const deviceId = "0192f100-0000-7000-8000-00000000000a";
 const clock = formatHlc({ wallTime: 1_790_000_000_000, counter: 1, nodeId: deviceId });

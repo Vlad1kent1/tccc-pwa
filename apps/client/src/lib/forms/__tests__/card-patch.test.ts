@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MechanismOfInjury } from "@tccc/shared";
-import { cleanCardPatch } from "./card-patch";
+import { cleanCardPatch } from "../card-patch";
 
 describe("cleanCardPatch", () => {
   it("turns blank and whitespace-only text into null", () => {

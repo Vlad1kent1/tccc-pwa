@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isoToLocalInput, localInputToIso } from "./time";
-import { responderPatch } from "./values";
+import { isoToLocalInput, localInputToIso } from "../time";
+import { responderPatch } from "../values";
 
 describe("form values", () => {
   it("copies only a valid responder profile", () => {

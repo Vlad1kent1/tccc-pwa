@@ -1,9 +1,9 @@
 import { compareHlc, mutationSchema, newId, parseHlc, tourniquetId } from "@tccc/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setServerClockOffset } from "../network-clock";
-import { CardNotFoundError, createCasualtyRepo, type CasualtyRepo } from "./casualtyRepo";
-import { getDeviceId } from "./meta";
-import { TcccDB } from "./schema";
+import { setServerClockOffset } from "../../network-clock";
+import { CardNotFoundError, createCasualtyRepo, type CasualtyRepo } from "../casualtyRepo";
+import { getDeviceId } from "../meta";
+import { TcccDB } from "../schema";
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
 

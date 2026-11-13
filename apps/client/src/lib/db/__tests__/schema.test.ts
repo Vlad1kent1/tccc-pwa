@@ -1,9 +1,9 @@
 import Dexie from "dexie";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CirculationTreatment, emptyCardFields, initialHlc, mutationSchema, newId } from "@tccc/shared";
-import { createCasualtyRepo } from "./casualtyRepo";
-import { LEGACY_BAG_KEY, finishLegacyExtrasMigration } from "./legacy-extras";
-import { TcccDB } from "./schema";
+import { createCasualtyRepo } from "../casualtyRepo";
+import { LEGACY_BAG_KEY, finishLegacyExtrasMigration } from "../legacy-extras";
+import { TcccDB } from "../schema";
 
 const openDatabases: Dexie[] = [];
 

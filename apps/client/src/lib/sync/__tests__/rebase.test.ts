@@ -1,7 +1,7 @@
 import { emptyCardFields, tourniquetId, type CasualtyCard } from "@tccc/shared";
 import { describe, expect, it } from "vitest";
 import type { LocalCasualtyCard, OutboxMutation } from "@/lib/db";
-import { rebaseCard, sameCardContent } from "./rebase";
+import { rebaseCard, sameCardContent } from "../rebase";
 
 const CARD = "01999999-9999-7000-8000-000000000001";
 const VITAL = "01999999-9999-7000-8000-0000000000a1";

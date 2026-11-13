@@ -1,30 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TcccDB } from "@/lib/db/schema";
-import { ApiError } from "./api";
-import { BACKOFF_CAP_MS } from "./backoff";
-import type { Connectivity } from "./connectivity";
-import { connectivityMode, getSyncSnapshot, patchSyncStatus } from "./status-store";
+import { ApiError } from "../api";
+import { BACKOFF_CAP_MS } from "../backoff";
+import type { Connectivity } from "../connectivity";
+import { connectivityMode, getSyncSnapshot, patchSyncStatus } from "../status-store";
 
 const probeConnectivity = vi.fn(async (..._args: unknown[]): Promise<Connectivity> => "online");
 const pushOutbox = vi.fn();
 const pullAll = vi.fn(async (..._args: unknown[]): Promise<void> => undefined);
 
-vi.mock("./connectivity", () => ({
+vi.mock("../connectivity", () => ({
   probeConnectivity: (...args: unknown[]) => probeConnectivity(...args),
 }));
 
-vi.mock("./pipeline", () => ({
+vi.mock("../pipeline", () => ({
   pushOutbox: (...args: unknown[]) => pushOutbox(...args),
   pullAll: (...args: unknown[]) => pullAll(...args),
 }));
 
 const readUnitToken = vi.fn(async (): Promise<string | null> => "unit-token");
 
-vi.mock("./unit-token", () => ({
+vi.mock("../unit-token", () => ({
   readUnitToken: () => readUnitToken(),
 }));
 
-import { resetSyncBackoff, resumeAfterTokenChange, syncNow } from "./engine";
+import { resetSyncBackoff, resumeAfterTokenChange, syncNow } from "../engine";
 
 let db: TcccDB;
 

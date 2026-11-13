@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BACKOFF_BASE_MS, BACKOFF_CAP_MS, backoffDelayMs } from "./backoff";
+import { BACKOFF_BASE_MS, BACKOFF_CAP_MS, backoffDelayMs } from "../backoff";
 
 describe("backoffDelayMs", () => {
   it("is zero when the random source returns zero", () => {

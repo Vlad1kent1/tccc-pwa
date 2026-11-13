@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getMeta } from "./meta";
-import { ensurePersistentStorage, getStorageStatus, requestPersistentStorage } from "./persistence";
-import { TcccDB } from "./schema";
+import { getMeta } from "../meta";
+import { ensurePersistentStorage, getStorageStatus, requestPersistentStorage } from "../persistence";
+import { TcccDB } from "../schema";
 
 let db: TcccDB;
 const storage = {
