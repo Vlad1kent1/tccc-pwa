@@ -52,7 +52,7 @@ export function paperRow<T extends { id: string }>(board: BoardSnapshot, rows: r
  * The row id for a keystroke in a printed column. An empty column gets a new row,
  * pinned to that column at once, so the next keystroke edits the same row.
  */
-function rowForColumn(store: BoardStore, column: string): string {
+export function rowForColumn(store: BoardStore, column: string): string {
   const pinned = store.getSnapshot().paper.slots[column];
   if (pinned) return pinned;
   const id = newId();

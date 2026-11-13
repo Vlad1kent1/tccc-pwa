@@ -7,6 +7,7 @@ import { useCardChoices } from "@/components/pages/casualties/dd1380/ua-fields";
 import { fluidColumn, medicationColumn, vitalColumn } from "@/components/pages/casualties/board/paper-layout";
 import {
   paperRow,
+  rowForColumn,
   saveFluidSlot,
   saveMedicationSlot,
   saveVitalSlot,
@@ -14,10 +15,11 @@ import {
   type MedicationDraft,
   type VitalDraft,
 } from "@/components/pages/casualties/board/rows";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useRowTimeBox, useSlice } from "@/components/pages/casualties/board/store";
 import type { BoardSnapshot } from "@/components/pages/casualties/board/snapshot";
 
-const inputClass = "w-full min-w-0 bg-transparent px-[0.1em] text-center font-normal text-black outline-none";
+const inputClass =
+  "w-full min-w-0 bg-transparent px-[0.1em] text-center font-normal text-black outline-none aria-invalid:outline-2 aria-invalid:outline-solid aria-invalid:outline-danger";
 
 /** Unfinished text of one cell. Subscribing to all drafts would re-render every cell on each keystroke. */
 function useCellDraft(rowId: string | undefined, field: string): string | undefined {
@@ -30,11 +32,24 @@ export function PaperVitalInput({ index, field }: { index: number; field: Exclud
   const draft = useCellDraft(row?.id, field);
   const stored = storedVital(row, field);
   const value = draft || stored;
+  const isTime = field === "time";
+  const timeBox = useRowTimeBox(isTime ? row?.id : undefined);
   return (
     <input
       value={row ? value : ""}
-      onChange={(event) => saveVitalSlot(board, index, { [field]: event.target.value })}
-      onBlur={() => board.flush()}
+      onChange={(event) => {
+        // The row is pinned before the save, so its box is never flagged mid-keystroke.
+        if (isTime) timeBox.focus(rowForColumn(board, vitalColumn(index)));
+        saveVitalSlot(board, index, { [field]: event.target.value });
+      }}
+      onFocus={() => {
+        if (isTime) timeBox.focus(row?.id);
+      }}
+      onBlur={() => {
+        if (isTime) timeBox.focus(null);
+        return board.flush();
+      }}
+      aria-invalid={timeBox.unfinished || undefined}
       className={inputClass}
     />
   );
@@ -84,11 +99,23 @@ export function PaperFluidInput({
   const stored =
     field === "name" ? (row?.name ?? "") : field === "volume" ? (row?.volumeMl == null ? "" : String(row.volumeMl)) : formatHmm(row?.administeredAt ?? null);
   const value = draft || stored;
+  const isTime = field === "time";
+  const timeBox = useRowTimeBox(isTime ? row?.id : undefined);
   return (
     <input
       value={value}
-      onChange={(event) => saveFluidSlot(board, kind, index, { [field]: event.target.value })}
-      onBlur={() => board.flush()}
+      onChange={(event) => {
+        if (isTime) timeBox.focus(rowForColumn(board, fluidColumn(kind, index)));
+        saveFluidSlot(board, kind, index, { [field]: event.target.value });
+      }}
+      onFocus={() => {
+        if (isTime) timeBox.focus(row?.id);
+      }}
+      onBlur={() => {
+        if (isTime) timeBox.focus(null);
+        return board.flush();
+      }}
+      aria-invalid={timeBox.unfinished || undefined}
       className={inputClass}
     />
   );
@@ -130,11 +157,23 @@ export function PaperMedicationInput({
   const draft = useCellDraft(row?.id, field);
   const stored = field === "name" ? (row?.name ?? "") : field === "dose" ? (row?.dose ?? "") : formatHmm(row?.administeredAt ?? null);
   const value = draft || stored;
+  const isTime = field === "time";
+  const timeBox = useRowTimeBox(isTime ? row?.id : undefined);
   return (
     <input
       value={value}
-      onChange={(event) => saveMedicationSlot(board, category, index, { [field]: event.target.value })}
-      onBlur={() => board.flush()}
+      onChange={(event) => {
+        if (isTime) timeBox.focus(rowForColumn(board, medicationColumn(category, index)));
+        saveMedicationSlot(board, category, index, { [field]: event.target.value });
+      }}
+      onFocus={() => {
+        if (isTime) timeBox.focus(row?.id);
+      }}
+      onBlur={() => {
+        if (isTime) timeBox.focus(null);
+        return board.flush();
+      }}
+      aria-invalid={timeBox.unfinished || undefined}
       className={inputClass}
     />
   );

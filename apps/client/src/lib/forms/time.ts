@@ -61,6 +61,32 @@ export function lastTimeToken(value: string): string {
 }
 
 /**
+ * A non-blank time box that does not end in a complete, valid time ("905", "14", "2560",
+ * "0930 143"). What it shows is not what is stored, so the box is flagged on blur.
+ */
+export function isUnfinishedTime(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const token = lastTimeToken(trimmed);
+  return !token || !trimmed.endsWith(token) || !parseClock(token);
+}
+
+/**
+ * Places a keystroke of a focused time box. `startedWith` is the stored time captured
+ * on focus, or `undefined` outside a focused edit (e.g. the Now button), which uses
+ * `current`. A keystroke is never anchored on what an earlier keystroke of the same
+ * edit saved (P0-001).
+ */
+export function placeEditedTime(
+  text: string,
+  startedWith: string | null | undefined,
+  current: string | null | undefined,
+  anchor: Omit<TimeAnchor, "near"> = {},
+): string | null {
+  return timeTokenToIso(lastTimeToken(text), { ...anchor, near: startedWith === undefined ? current : startedWith });
+}
+
+/**
  * Writes the current `HHMM` into a time box, replacing whatever is already there.
  */
 export function applyNowStamp(_current = "", now = networkNow()): string {

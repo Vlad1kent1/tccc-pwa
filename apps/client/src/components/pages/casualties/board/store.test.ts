@@ -11,7 +11,7 @@ import {
 import { casualtyRepo, db as appDb, type LocalCasualtyCard } from "@/lib/db";
 import { clearSaveStatus, getSaveStatus, retrySave } from "@/lib/forms/save-status";
 import { vitalColumn } from "@/components/pages/casualties/board/paper-layout";
-import { paperRow, saveVitalSlot } from "@/components/pages/casualties/board/rows";
+import { paperRow, rowForColumn, saveVitalSlot } from "@/components/pages/casualties/board/rows";
 import { createCasualtyRepo, type CasualtyRepo } from "@/lib/db/casualtyRepo";
 import { TcccDB } from "@/lib/db/schema";
 import { commitBoard } from "@/components/pages/casualties/board/commit";
@@ -378,6 +378,75 @@ describe("board save failures", () => {
     const card = await casualtyRepo.create({ lastName });
     return { id: card.id, board: await open(card) };
   }
+
+  /** A paper vitals time cell, keystroke by keystroke: focus is claimed before each save, released on blur. */
+  function typeVitalTime(board: BoardStore, keystrokes: string[]): string {
+    let id = "";
+    for (const time of keystrokes) {
+      id = rowForColumn(board, vitalColumn(0));
+      board.focusTimeBox(id);
+      saveVitalSlot(board, 0, { time });
+      expect(getSaveStatus().board.invalid, `while typing "${time}"`).toEqual([]);
+    }
+    board.focusTimeBox(null);
+    return id;
+  }
+
+  it("flags a time box left with an unfinished time until a complete time is typed (P0-001)", async () => {
+    const { id, board } = await openCard("Hotel");
+    const rowId = typeVitalTime(board, ["9", "90", "905"]);
+    expect(board.isTimeBoxUnfinished(rowId)).toBe(true);
+    expect(getSaveStatus().board.invalid).toEqual(["vitals"]);
+
+    // A save does not clear it: the box still shows a time that is not the stored one.
+    board.editNotes("pulse weak");
+    await board.flush();
+    expect(getSaveStatus().board.invalid).toEqual(["vitals"]);
+
+    typeVitalTime(board, ["0", "09", "090", "0905"]);
+    expect(board.isTimeBoxUnfinished(rowId)).toBe(false);
+    expect(getSaveStatus().board.invalid).toEqual([]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("shows the flag again when the card is reopened, and drops it when the row is deleted elsewhere (P0-001)", async () => {
+    const card = await casualtyRepo.create({ lastName: "India" });
+    const first = mount(boardForCard(card));
+    const rowId = typeVitalTime(first, ["1", "14"]);
+    expect(getSaveStatus().board.invalid).toEqual(["vitals"]);
+
+    // The screen closes: the store drains, is dropped, and its flag goes with it.
+    mounted = [];
+    releaseBoard(first);
+    await vi.waitFor(() => expect(liveBoards().has(first)).toBe(false));
+    expect(getSaveStatus().board.invalid).toEqual([]);
+
+    // Reopened (after a reload, or on another device after a pull): "14" is still in the row's draft.
+    const reopened = await open((await casualtyRepo.getById(card.id))!);
+    expect(reopened).not.toBe(first);
+    expect(reopened.getSnapshot().rowDrafts[rowId]?.time).toBe("14");
+    expect(reopened.isTimeBoxUnfinished(rowId)).toBe(true);
+    expect(getSaveStatus().board.invalid).toEqual(["vitals"]);
+
+    // Another device deletes the row; the pulled card no longer has it.
+    await casualtyRepo.deleteChild(card.id, "vitalSigns", rowId);
+    reopened.hydrate((await casualtyRepo.getById(card.id))!);
+    expect(reopened.getSnapshot().vitals).toHaveLength(0);
+    expect(getSaveStatus().board.invalid).toEqual([]);
+    await casualtyRepo.softDelete(card.id);
+  });
+
+  it("flags the tourniquet time box on blur only, and clears it once complete (P0-001)", async () => {
+    const { id, board } = await openCard("Juliett");
+    board.checkTimeBox("tourniquet:RIGHT_LEG", "body", "905", true);
+    expect(getSaveStatus().board.invalid).toEqual([]);
+    board.checkTimeBox("tourniquet:RIGHT_LEG", "body", "905");
+    expect(board.isTimeBoxUnfinished("tourniquet:RIGHT_LEG")).toBe(true);
+    expect(getSaveStatus().board.invalid).toEqual(["body"]);
+    board.checkTimeBox("tourniquet:RIGHT_LEG", "body", "0905", true);
+    expect(getSaveStatus().board.invalid).toEqual([]);
+    await casualtyRepo.softDelete(id);
+  });
 
   it("stores whitespace-only text as empty and keeps saving later edits", async () => {
     const { id, board } = await openCard("Bravo");

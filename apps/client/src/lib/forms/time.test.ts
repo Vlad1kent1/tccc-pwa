@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { applyNowStamp, formatHmm, joinDateAndTime, lastTimeToken, maskHmm, sameMinute, timeTokenToIso } from "./time";
+import {
+  applyNowStamp,
+  formatHmm,
+  isUnfinishedTime,
+  joinDateAndTime,
+  lastTimeToken,
+  maskHmm,
+  placeEditedTime,
+  sameMinute,
+  timeTokenToIso,
+} from "./time";
 
 const NOW = new Date(2026, 9, 7, 14, 35, 0);
 
@@ -43,6 +53,15 @@ describe("time stamps", () => {
       stored = timeTokenToIso(lastTimeToken(text), { now, near: stored, notBefore: null }) ?? stored;
     }
     expect(stored).toBe(new Date(2026, 10, 10, 14, 5, 0).toISOString());
+  });
+
+  it("flags a time box left with text that is not a complete time (P0-001)", () => {
+    for (const text of ["905", "14", "1", "14:0", "2560", "0960", "0930 143", "14051"]) {
+      expect(isUnfinishedTime(text), text).toBe(true);
+    }
+    for (const text of ["", "  ", "0905", "9:05", "14:05", "0930 1435", " 2350 "]) {
+      expect(isUnfinishedTime(text), text).toBe(false);
+    }
   });
 
   it("joins a date with the latest time token", () => {
@@ -146,5 +165,35 @@ describe("sameMinute", () => {
     expect(sameMinute(local(7, 8, 15, 42).toISOString(), iso(7, 8, 15))).toBe(true);
     expect(sameMinute(iso(7, 8, 15), iso(7, 8, 16))).toBe(false);
     expect(sameMinute(null, null)).toBe(true);
+  });
+});
+
+describe("placeEditedTime: a focused time box edit", () => {
+  const editNow = new Date(2026, 10, 10, 23, 30, 0);
+  const at = (day: number, hours: number, minutes: number) => new Date(2026, 10, day, hours, minutes, 0).toISOString();
+
+  /** The tourniquet panel's loop: each keystroke saves, and the saved value becomes the row's time. */
+  function typeOver(stored: string, startedWith: string | null | undefined, sequence: string[]): string {
+    let current = stored;
+    for (const text of sequence) current = placeEditedTime(text, startedWith, current, { now: editNow, notBefore: null }) ?? current;
+    return current;
+  }
+
+  it("corrects 0105 through 2105 to 2305 against the time the edit started with", () => {
+    const stored = at(10, 1, 5);
+    expect(typeOver(stored, stored, ["2105"])).toBe(at(9, 21, 5));
+    expect(typeOver(stored, stored, ["2105", "2305"])).toBe(at(9, 23, 5));
+  });
+
+  it("does not anchor a keystroke on the intermediate time an earlier keystroke saved (P0-001)", () => {
+    // 2105 is saved as 9 Nov 21:05, nearest to 01:05. Anchored on that, 1205 would become 9 Nov 12:05,
+    // a day before the 10 Nov 12:05 nearest to the 01:05 the edit started with.
+    const stored = at(10, 1, 5);
+    expect(typeOver(stored, stored, ["2105", "1205"])).toBe(at(10, 12, 5));
+  });
+
+  it("uses the live time outside a focused edit, and an empty start when the row had no time", () => {
+    expect(placeEditedTime("2305", undefined, at(10, 22, 0), { now: editNow })).toBe(at(10, 23, 5));
+    expect(placeEditedTime("2305", null, at(10, 22, 0), { now: editNow })).toBe(at(10, 23, 5));
   });
 });

@@ -14,6 +14,7 @@ import {
 import { casualtyRepo, db, getResponderProfile, type CasualtyRepo, type LocalCasualtyCard } from "@/lib/db";
 import { cleanCardPatch, type CleanPatch } from "@/lib/forms/card-patch";
 import { reportInvalidFields, reportSaveFailed, reportSaved, setSaveRetry } from "@/lib/forms/save-status";
+import { isUnfinishedTime } from "@/lib/forms/time";
 import { responderPatch } from "@/lib/forms/values";
 import { networkNowIso } from "@/lib/network-clock";
 import { layoutPaper, pinPaperRow, unpinPaperRow } from "@/components/pages/casualties/board/paper-layout";
@@ -33,6 +34,9 @@ import {
 export type { BoardSlice, BoardSnapshot };
 
 type When = "debounce" | "now";
+
+/** The board sections a time box belongs to, as the save banner names them. */
+export type TimeBoxSlice = Extract<BoardSlice, "body" | "vitals" | "fluids" | "meds">;
 
 const DEBOUNCE_MS = 400;
 const MARK_RADIUS = 0.04;
@@ -88,6 +92,13 @@ export class BoardStore {
   failed = false;
   /** Fields and sections left out of the last save, for the save banner. */
   invalid: readonly string[] = [];
+  /**
+   * Time boxes whose text lives only on screen (the tourniquet time), left with text that is
+   * not a complete time, by box key. Row time boxes are judged from `rowDrafts` instead.
+   */
+  private unfinishedTimes = new Map<string, TimeBoxSlice>();
+  /** The row time box being typed into. It is not flagged until it is left. */
+  private focusedTimeBox: string | null = null;
   /** Mounted screens using this store. The registry drops it at zero once its saves settle. */
   refs = 0;
 
@@ -122,6 +133,58 @@ export class BoardStore {
 
   private emit(): void {
     for (const listener of this.listeners) listener();
+    publishInvalidFields();
+  }
+
+  /** What the save banner lists for this store: invalid fields, skipped sections, and sections with an unfinished time box. */
+  reportedInvalid(): string[] {
+    const rowTimes = Object.keys(this.snapshot.rowDrafts).map((id) => this.unfinishedRowTime(id));
+    return [...new Set([...this.invalid, ...this.unfinishedTimes.values(), ...rowTimes.filter((slice) => slice != null)])];
+  }
+
+  /**
+   * The section of a row whose time box shows text that is not a complete time, so what it
+   * shows is not the stored time (P0-001). Judged from the persisted `rowDrafts`, so the flag
+   * survives a reload or another device, and goes away with the row. The box being typed
+   * into is not flagged until it is left.
+   */
+  private unfinishedRowTime(id: string): TimeBoxSlice | null {
+    if (id === this.focusedTimeBox) return null;
+    const { rowDrafts, vitals, fluids, medications } = this.snapshot;
+    if (!isUnfinishedTime(rowDrafts[id]?.time ?? "")) return null;
+    if (vitals.some((row) => row.id === id)) return "vitals";
+    if (fluids.some((row) => row.id === id)) return "fluids";
+    if (medications.some((row) => row.id === id)) return "meds";
+    return null;
+  }
+
+  isTimeBoxUnfinished = (key: string): boolean => this.unfinishedTimes.has(key) || this.unfinishedRowTime(key) != null;
+
+  /** A row time box gained (`id`) or lost (`null`) focus. */
+  focusTimeBox = (id: string | null): void => {
+    if (id === this.focusedTimeBox) return;
+    this.focusedTimeBox = id;
+    this.emit();
+  };
+
+  /**
+   * Re-checks a time box whose text is not stored (the tourniquet time). On blur (`typing`
+   * false) text that is not a complete time is flagged. While typing, a flag is only
+   * cleared, never raised, so a half-typed time is not flagged mid-keystroke.
+   */
+  checkTimeBox = (key: string, slice: TimeBoxSlice, text: string, typing = false): void => {
+    const unfinished = isUnfinishedTime(text);
+    if (typing && unfinished) return;
+    if (unfinished === this.unfinishedTimes.has(key)) return;
+    if (unfinished) this.unfinishedTimes.set(key, slice);
+    else this.unfinishedTimes.delete(key);
+    this.emit();
+  };
+
+  /** Drops the on-screen time box flags, once the screen holding the boxes is gone. The caller republishes. */
+  forgetTimeBoxes(): void {
+    this.unfinishedTimes.clear();
+    this.focusedTimeBox = null;
   }
 
   // ── Card updates from Dexie ──────────────────────────────────────────────
@@ -667,18 +730,23 @@ setSaveRetry("board", () => {
 
 /** The save banner shows every live store: a failure on any card stays visible until it is saved. */
 function publishSaveStatus(): void {
-  const stores = [...live];
-  reportInvalidFields("board", [...new Set(stores.flatMap((store) => store.invalid))]);
-  if (!stores.some((store) => store.failed)) reportSaved("board");
+  publishInvalidFields();
+  if (![...live].some((store) => store.failed)) reportSaved("board");
+}
+
+/** The banner's invalid list, re-derived on every store change. `reportInvalidFields` ignores an unchanged list. */
+function publishInvalidFields(): void {
+  reportInvalidFields("board", [...new Set([...live].flatMap((store) => store.reportedInvalid()))]);
 }
 
 function collect(store: BoardStore): void {
   if (store.refs > 0 || !store.isSettled()) return;
   live.delete(store);
   if (store.cardId && byCard.get(store.cardId) === store) byCard.delete(store.cardId);
-  if (store.invalid.length > 0) {
+  if (store.reportedInvalid().length > 0) {
     // Its inputs are gone with the screen; an invalid value it held can no longer be fixed there.
     store.invalid = [];
+    store.forgetTimeBoxes();
     publishSaveStatus();
   }
 }
@@ -708,6 +776,8 @@ export function retainBoard(store: BoardStore): void {
   live.add(store);
   const id = store.cardId;
   if (id && !byCard.has(id)) byCard.set(id, store);
+  // A reopened card may hold an unfinished time typed earlier or on another device.
+  publishInvalidFields();
 }
 
 /** The last screen left: pending edits are saved, then the store is dropped once its saves settle. */
@@ -783,4 +853,38 @@ export function useSlice<T>(select: (state: BoardSnapshot) => T): T {
     () => select(store.getSnapshot()),
     () => select(EMPTY_SNAPSHOT),
   );
+}
+
+/**
+ * A row time box's flag (vitals, fluid or medication), derived from the row's draft text.
+ * Call `focus(id)` when the box gains focus or its row is created, and `focus(null)` on blur:
+ * the box is flagged only once it is left. `id` is undefined while the box has no row yet.
+ */
+export function useRowTimeBox(id: string | undefined): { unfinished: boolean; focus: (id: string | null | undefined) => void } {
+  const store = useBoard();
+  const unfinished = useSyncExternalStore(
+    store.subscribe,
+    () => (id ? store.isTimeBoxUnfinished(id) : false),
+    () => false,
+  );
+  return { unfinished, focus: (next) => store.focusTimeBox(next ?? null) };
+}
+
+/**
+ * The flag of a time box whose text is not stored (the tourniquet time). `check(text)` on
+ * blur flags text that is not a complete time; `check(text, true)` while typing only clears it.
+ */
+export function useTimeBox(key: string | undefined, slice: TimeBoxSlice): { unfinished: boolean; check: (text: string, typing?: boolean) => void } {
+  const store = useBoard();
+  const unfinished = useSyncExternalStore(
+    store.subscribe,
+    () => (key ? store.isTimeBoxUnfinished(key) : false),
+    () => false,
+  );
+  return {
+    unfinished,
+    check: (text, typing = false) => {
+      if (key) store.checkTimeBox(key, slice, text, typing);
+    },
+  };
 }

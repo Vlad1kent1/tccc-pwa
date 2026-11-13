@@ -16,7 +16,7 @@ import { OptionSelect } from "@/components/pages/casualties/board/option-select"
 import { StampField } from "@/components/pages/casualties/board/stamp-field";
 import { TextField } from "@/components/pages/casualties/board/text-field";
 import { saveMedicationFields } from "@/components/pages/casualties/board/rows";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useRowTimeBox, useSlice } from "@/components/pages/casualties/board/store";
 
 export const MedicationsBlock = memo(function MedicationsBlock() {
   const { t, enumLabel } = useT();
@@ -74,6 +74,7 @@ const MedicationEditor = memo(function MedicationEditor({
   const dose = useSyncedField(row?.dose ?? "");
   const [timeText, setTimeText] = useState("");
   const timeLock = useRef(false);
+  const timeBox = useRowTimeBox(id);
   const canonical = row ? formatHmm(row.administeredAt) : "";
 
   useEffect(() => {
@@ -143,7 +144,12 @@ const MedicationEditor = memo(function MedicationEditor({
           setTimeText(value);
           commit({ time: value });
         }}
-        onBlur={() => board.flush()}
+        onBlur={() => {
+          timeBox.focus(null);
+          return board.flush();
+        }}
+        onFocus={() => timeBox.focus(id)}
+        invalid={timeBox.unfinished}
       />
       <button type="button" className="btn btn-secondary sm:col-span-2" onClick={() => onRemove(id)}>
         {t("actions.remove")}

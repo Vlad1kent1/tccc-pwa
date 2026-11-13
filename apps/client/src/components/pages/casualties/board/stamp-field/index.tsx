@@ -12,12 +12,15 @@ export function StampField({
   onChange,
   onFocus,
   onBlur,
+  invalid = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  /** The box holds text that is not a complete time, so what it shows is not the stored time. */
+  invalid?: boolean;
 }) {
   const { t } = useT();
   const id = useId();
@@ -29,7 +32,8 @@ export function StampField({
       <div className="flex gap-2">
         <input
           id={id}
-          className={`${fieldClass} min-h-12`}
+          className={`${fieldClass} min-h-12 aria-invalid:border-2 aria-invalid:border-danger`}
+          aria-invalid={invalid || undefined}
           inputMode="numeric"
           autoComplete="off"
           maxLength={4}

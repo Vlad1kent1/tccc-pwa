@@ -10,7 +10,7 @@ import { OptionSelect } from "@/components/pages/casualties/board/option-select"
 import { StampField } from "@/components/pages/casualties/board/stamp-field";
 import { TextField } from "@/components/pages/casualties/board/text-field";
 import { saveVitalFields } from "@/components/pages/casualties/board/rows";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useRowTimeBox, useSlice } from "@/components/pages/casualties/board/store";
 
 export const VitalsBlock = memo(function VitalsBlock() {
   const board = useBoard();
@@ -58,6 +58,7 @@ const VitalEditor = memo(function VitalEditor({ id, onRemove }: { id: string; on
   const [timeText, setTimeText] = useState("");
   const [bpError, setBpError] = useState(false);
   const timeLock = useRef(false);
+  const timeBox = useRowTimeBox(id);
   const draftedTime = useSlice((state) => state.rowDrafts[id]?.time ?? "");
   const canonical = row ? formatHmm(row.measuredAt) : "";
 
@@ -113,7 +114,12 @@ const VitalEditor = memo(function VitalEditor({ id, onRemove }: { id: string; on
           setTimeText(value);
           commit({ time: value });
         }}
-        onBlur={() => board.flush()}
+        onBlur={() => {
+          timeBox.focus(null);
+          return board.flush();
+        }}
+        onFocus={() => timeBox.focus(id)}
+        invalid={timeBox.unfinished}
       />
       <TextField
         label={t("block5.vitals.pulse")}

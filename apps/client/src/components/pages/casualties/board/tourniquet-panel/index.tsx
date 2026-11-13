@@ -3,10 +3,10 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { BodyRegion, Limb } from "@tccc/shared";
 import { useT } from "@/i18n/use-t";
-import { formatHmm, lastTimeToken, timeTokenToIso } from "@/lib/forms/time";
+import { formatHmm, lastTimeToken, placeEditedTime, timeTokenToIso } from "@/lib/forms/time";
 import { fieldClass } from "@/components/ui/field";
 import { StampField } from "@/components/pages/casualties/board/stamp-field";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useSlice, useTimeBox } from "@/components/pages/casualties/board/store";
 
 const LIMBS = [
   [Limb.RIGHT_ARM, BodyRegion.RIGHT_ARM, "block4.rightArm"],
@@ -41,6 +41,7 @@ function TourniquetCard({ limb, region, label }: { limb: Limb; region: BodyRegio
    * keystroke saved (P0-001). Undefined outside a focused edit (e.g. the Now button), which uses the row.
    */
   const timeAnchor = useRef<string | null | undefined>(undefined);
+  const timeBox = useTimeBox(`tourniquet:${limb}`, "body");
   const canonical = row ? formatHmm(row.appliedAt) : "";
 
   useEffect(() => {
@@ -76,8 +77,8 @@ function TourniquetCard({ limb, region, label }: { limb: Limb; region: BodyRegio
           const typed = (row?.type ?? "").trim();
           timeLock.current = true;
           setTimeText(next);
-          const near = timeAnchor.current === undefined ? row?.appliedAt : timeAnchor.current;
-          const iso = timeTokenToIso(lastTimeToken(next), { near, notBefore: injuredAt });
+          timeBox.check(next, true);
+          const iso = placeEditedTime(next, timeAnchor.current, row?.appliedAt, { notBefore: injuredAt });
           if (!iso || !typed) return;
           board.setTourniquetTime(region, iso);
         }}
@@ -86,8 +87,10 @@ function TourniquetCard({ limb, region, label }: { limb: Limb; region: BodyRegio
         }}
         onBlur={() => {
           timeAnchor.current = undefined;
+          timeBox.check(timeText);
           return board.flush();
         }}
+        invalid={timeBox.unfinished}
       />
     </div>
   );

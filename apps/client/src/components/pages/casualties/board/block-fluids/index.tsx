@@ -10,7 +10,7 @@ import { OptionSelect } from "@/components/pages/casualties/board/option-select"
 import { StampField } from "@/components/pages/casualties/board/stamp-field";
 import { TextField } from "@/components/pages/casualties/board/text-field";
 import { saveFluidFields } from "@/components/pages/casualties/board/rows";
-import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
+import { useBoard, useRowTimeBox, useSlice } from "@/components/pages/casualties/board/store";
 
 export const FluidsBlock = memo(function FluidsBlock() {
   const { t } = useT();
@@ -67,6 +67,7 @@ const FluidEditor = memo(function FluidEditor({
   const volume = useSyncedField(row?.volumeMl == null ? "" : String(row.volumeMl));
   const [timeText, setTimeText] = useState("");
   const timeLock = useRef(false);
+  const timeBox = useRowTimeBox(id);
   const canonical = row ? formatHmm(row.administeredAt) : "";
 
   useEffect(() => {
@@ -132,7 +133,12 @@ const FluidEditor = memo(function FluidEditor({
           setTimeText(value);
           commit({ time: value });
         }}
-        onBlur={() => board.flush()}
+        onBlur={() => {
+          timeBox.focus(null);
+          return board.flush();
+        }}
+        onFocus={() => timeBox.focus(id)}
+        invalid={timeBox.unfinished}
       />
       <button type="button" className="btn btn-secondary sm:col-span-2" onClick={() => onRemove(id)}>
         {t("actions.remove")}
