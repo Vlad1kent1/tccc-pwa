@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useLayoutEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Dd1380Card } from "@/components/pages/casualties/dd1380/dd1380-card";
+import { Dd1380Card, type PaperCells } from "@/components/shared/dd1380-card";
+import {
+  PaperFluidInput,
+  PaperFluidRoute,
+  PaperMedicationInput,
+  PaperMedicationRoute,
+  PaperVitalInput,
+  PaperVitalSelect,
+} from "@/components/pages/casualties/dd1380/paper-cell";
+import { PaperOverflow } from "@/components/pages/casualties/dd1380/paper-overflow";
 import { useT } from "@/i18n/use-t";
 import type { LocalCasualtyCard } from "@/lib/db";
 import { CardLoading, MissingCard } from "@/components/ui/missing-card";
@@ -20,6 +29,17 @@ import {
   useSlice,
 } from "@/lib/board";
 import { RemoteBanner } from "@/components/shared/remote-banner";
+
+/** The editable printed tables, bound to the board store. Module-level so the memoized card keeps it. */
+const PAPER_CELLS: PaperCells = {
+  VitalInput: PaperVitalInput,
+  VitalSelect: PaperVitalSelect,
+  FluidInput: PaperFluidInput,
+  FluidRoute: PaperFluidRoute,
+  MedicationInput: PaperMedicationInput,
+  MedicationRoute: PaperMedicationRoute,
+  Overflow: PaperOverflow,
+};
 
 export function CardView() {
   const params = useSearchParams();
@@ -89,7 +109,7 @@ function SheetPage({ syncStatus }: { syncStatus: LocalCasualtyCard["syncStatus"]
           </button>
         </div>
       </div>
-      <Dd1380Card source={source} marks={marks} />
+      <Dd1380Card source={source} marks={marks} cells={PAPER_CELLS} />
     </main>
   );
 }

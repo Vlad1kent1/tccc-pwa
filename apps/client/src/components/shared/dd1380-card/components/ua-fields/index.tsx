@@ -2,8 +2,16 @@
 
 import type { HTMLAttributes, ReactNode } from "react";
 import { useLocale } from "@/i18n/locale";
-import { SheetScope, useChecked, useExclusive, useFieldId, useTextValue } from "@/components/pages/casualties/dd1380/form-context";
-import { AVPU_CHOICES, PAIN_CHOICES, ROUTE_OPTIONS } from "@/components/pages/casualties/dd1380/options";
+import {
+  AVPU_CHOICES,
+  PAIN_CHOICES,
+  ROUTE_OPTIONS,
+  SheetScope,
+  useChecked,
+  useExclusive,
+  useFieldId,
+  useTextValue,
+} from "@/components/shared/dd1380-card/workflow";
 
 /** Square-cornered sheet. Everything printed on the Ukrainian card sits inside this border. */
 export function UaSheet({

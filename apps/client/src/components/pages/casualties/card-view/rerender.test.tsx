@@ -15,10 +15,10 @@ vi.mock("next/link", () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 vi.mock("next/image", () => ({ default: () => <span data-image="" /> }));
-vi.mock("@/components/pages/casualties/dd1380/fonts", () => ({ formSans: { variable: "" }, formSerif: { variable: "" } }));
+vi.mock("@/components/shared/dd1380-card/workflow/fonts", () => ({ formSans: { variable: "" }, formSerif: { variable: "" } }));
 // The real injury section, inside a Profiler that counts every commit of it or anything below it.
-vi.mock("@/components/pages/casualties/dd1380/injury-section", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/components/pages/casualties/dd1380/injury-section")>();
+vi.mock("@/components/shared/dd1380-card/components/injury-section", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/shared/dd1380-card/components/injury-section")>();
   const Real = actual.InjurySection;
   return {
     ...actual,

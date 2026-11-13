@@ -1,12 +1,10 @@
 "use client";
 
 import { memo } from "react";
-import { useCardCopy } from "@/components/pages/casualties/dd1380/use-card-copy";
-import { InjurySection } from "@/components/pages/casualties/dd1380/injury-section";
-import { RosterEvac } from "@/components/pages/casualties/dd1380/roster-evac";
-import { PaperVitalInput, PaperVitalSelect } from "@/components/pages/casualties/dd1380/paper-cell";
-import { PaperOverflow } from "@/components/pages/casualties/dd1380/paper-overflow";
-import { Choice, Dash, DropHeading, Line, Mark, Specify, UaSheet } from "@/components/pages/casualties/dd1380/ua-fields";
+import { useCardCopy, usePaperCells } from "@/components/shared/dd1380-card/workflow";
+import { InjurySection } from "../injury-section";
+import { RosterEvac } from "../roster-evac";
+import { Choice, Dash, DropHeading, Line, Mark, Specify, UaSheet } from "../ua-fields";
 
 const SEX = ["male", "female"] as const;
 const VITAL_TABLES = ["vitals"] as const;
@@ -124,6 +122,7 @@ function Mechanism() {
 
 function Vitals() {
   const copy = useCardCopy();
+  const { VitalInput, VitalSelect, Overflow } = usePaperCells();
   return (
     <section aria-label={copy.vitals}>
       <DropHeading cap={copy.vitalsCap} rest={copy.vitalsRest} note={copy.vitalsNote} />
@@ -140,7 +139,7 @@ function Vitals() {
             <th className="border-r border-b border-black pr-[0.35em] text-right">{copy.timeCol}</th>
             {COL.map((col, index) => (
               <td key={col.time} className="border border-black">
-                <PaperVitalInput index={index} field="time" />
+                <VitalInput index={index} field="time" />
               </td>
             ))}
           </tr>
@@ -148,7 +147,7 @@ function Vitals() {
             <th className="border border-black px-[0.25em] text-right">{copy.pulse}</th>
             {COL.map((col, index) => (
               <td key={col.pulse} className="border border-black bg-[#dcdcdc]">
-                <PaperVitalInput index={index} field="pulse" />
+                <VitalInput index={index} field="pulse" />
               </td>
             ))}
           </tr>
@@ -157,9 +156,9 @@ function Vitals() {
             {COL.map((col, index) => (
               <td key={col.sys} className="border border-black">
                 <div className="flex items-center">
-                  <PaperVitalInput index={index} field="systolic" />
+                  <VitalInput index={index} field="systolic" />
                   <span className="font-bold">/</span>
-                  <PaperVitalInput index={index} field="diastolic" />
+                  <VitalInput index={index} field="diastolic" />
                 </div>
               </td>
             ))}
@@ -168,7 +167,7 @@ function Vitals() {
             <th className="border border-black px-[0.25em] text-right">{copy.rr}</th>
             {COL.map((col, index) => (
               <td key={col.rr} className="border border-black">
-                <PaperVitalInput index={index} field="respiratory" />
+                <VitalInput index={index} field="respiratory" />
               </td>
             ))}
           </tr>
@@ -176,7 +175,7 @@ function Vitals() {
             <th className="border border-black px-[0.25em] text-right">{copy.o2}</th>
             {COL.map((col, index) => (
               <td key={col.o2} className="border border-black">
-                <PaperVitalInput index={index} field="spo2" />
+                <VitalInput index={index} field="spo2" />
               </td>
             ))}
           </tr>
@@ -184,7 +183,7 @@ function Vitals() {
             <th className="border border-black px-[0.25em] text-right">{copy.avpu}</th>
             {COL.map((col, index) => (
               <td key={col.avpu} className="border border-black bg-[#dcdcdc]">
-                <PaperVitalSelect index={index} field="avpu" />
+                <VitalSelect index={index} field="avpu" />
               </td>
             ))}
           </tr>
@@ -192,13 +191,13 @@ function Vitals() {
             <th className="border border-black px-[0.25em] text-right">{copy.pain}</th>
             {COL.map((col, index) => (
               <td key={col.pain} className="border border-black bg-[#dcdcdc]">
-                <PaperVitalSelect index={index} field="pain" />
+                <VitalSelect index={index} field="pain" />
               </td>
             ))}
           </tr>
         </tbody>
       </table>
-      <PaperOverflow tables={VITAL_TABLES} />
+      <Overflow tables={VITAL_TABLES} />
     </section>
   );
 }

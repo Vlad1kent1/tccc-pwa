@@ -1,25 +1,29 @@
 "use client";
 
 import { memo } from "react";
-import { CardBack } from "@/components/pages/casualties/dd1380/card-back";
-import { CardFront } from "@/components/pages/casualties/dd1380/card-front";
-import { formSans, formSerif } from "@/components/pages/casualties/dd1380/fonts";
 import type { Dd1380FormSource, StoredMark } from "@tccc/dd1380";
-import { Dd1380FormProvider } from "@/components/pages/casualties/dd1380/form-context";
-import { InjuryMarksProvider } from "@/components/pages/casualties/dd1380/injury-section";
+import { CardBack, CardFront, InjuryMarksProvider } from "./components";
+import { Dd1380FormProvider, PaperCellsProvider, formSans, formSerif, type PaperCells } from "./workflow";
+
+export { useCardChoices, type ChoiceOption } from "./components";
+export { useCardCopy, type CardCopy, type PaperCells } from "./workflow";
 
 const NO_MARKS: readonly StoredMark[] = [];
 
-/** Re-renders only when `source` or `marks` change identity; fields update themselves. */
+/** Re-renders only when `source`, `marks` or `cells` change identity; fields update themselves. */
 export const Dd1380Card = memo(function Dd1380Card({
   source,
   marks = NO_MARKS,
+  cells,
 }: {
   source: Dd1380FormSource;
   marks?: readonly StoredMark[];
+  /** The editable table cells, supplied by the page (see `PaperCells`). */
+  cells: PaperCells;
 }) {
   return (
     <Dd1380FormProvider source={source}>
+      <PaperCellsProvider cells={cells}>
       <InjuryMarksProvider marks={marks}>
       <style jsx global>{`
         @media print {
@@ -36,6 +40,7 @@ export const Dd1380Card = memo(function Dd1380Card({
         <CardBack />
       </div>
       </InjuryMarksProvider>
+      </PaperCellsProvider>
     </Dd1380FormProvider>
   );
 });

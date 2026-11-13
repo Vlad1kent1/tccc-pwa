@@ -3,14 +3,11 @@
 import Image from "next/image";
 import { createContext, memo, useContext, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { BodyView, type BodyView as BodyViewName } from "@tccc/shared";
-import bodyBack from "@/components/pages/casualties/dd1380/assets/body-back.png";
-import bodyFront from "@/components/pages/casualties/dd1380/assets/body-front.png";
-import { useCardCopy } from "@/components/pages/casualties/dd1380/use-card-copy";
-import { useChecked, useFieldFocus, useFieldId } from "@/components/pages/casualties/dd1380/form-context";
+import { useCardCopy, useChecked, useFieldFocus, useFieldId } from "@/components/shared/dd1380-card/workflow";
 import { useT } from "@/i18n/use-t";
 import { ANTERIOR_SITES, POSTERIOR_SITES, figureMarkStyle, isPaperSite, type InjurySite, type StoredMark } from "@tccc/dd1380";
-import { FigureMark } from "@/components/pages/casualties/board/figure-mark";
-import { DropHeading, Line } from "@/components/pages/casualties/dd1380/ua-fields";
+import { FigureMark, bodyBack, bodyFront } from "@/components/shared/figure-mark";
+import { DropHeading, Line } from "../ua-fields";
 
 const MarksContext = createContext<readonly StoredMark[]>([]);
 

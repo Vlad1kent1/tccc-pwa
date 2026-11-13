@@ -4,9 +4,7 @@ import Image from "next/image";
 import { memo, type MouseEvent } from "react";
 import { BodyView, type BodyView as BodyViewName } from "@tccc/shared";
 import { useT } from "@/i18n/use-t";
-import bodyBack from "@/components/pages/casualties/dd1380/assets/body-back.png";
-import bodyFront from "@/components/pages/casualties/dd1380/assets/body-front.png";
-import { figureMarkClass } from "@/components/pages/casualties/board/figure-mark";
+import { bodyBack, bodyFront, figureMarkClass } from "@/components/shared/figure-mark";
 import { figureMarkStyle } from "@tccc/dd1380";
 import { type BoardSnapshot, useBoard, useSlice } from "@/lib/board";
 

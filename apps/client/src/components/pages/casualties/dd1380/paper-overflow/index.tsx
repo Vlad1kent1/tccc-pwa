@@ -1,6 +1,6 @@
 "use client";
 
-import { useCardCopy, type CardCopy } from "@/components/pages/casualties/dd1380/use-card-copy";
+import { useCardCopy, type CardCopy } from "@/components/shared/dd1380-card";
 import { hiddenRows, type PaperTableName } from "@tccc/dd1380";
 import { useSlice } from "@/lib/board";
 

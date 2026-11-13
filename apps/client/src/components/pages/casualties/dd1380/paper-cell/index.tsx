@@ -3,7 +3,7 @@
 import type { FluidKind as FluidKindName, MedicationCategory as MedicationCategoryName } from "@tccc/shared";
 import { formatHmm } from "@/lib/forms/time";
 import { fluidColumn, medicationColumn, parseAvpu, parseRoute, routeToPaper, vitalColumn } from "@tccc/dd1380";
-import { useCardChoices } from "@/components/pages/casualties/dd1380/ua-fields";
+import { useCardChoices } from "@/components/shared/dd1380-card";
 import {
   type BoardSnapshot,
   type FluidDraft,

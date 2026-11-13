@@ -19,6 +19,8 @@ const MIGRATED = [
   "components/shared/sync-badge",
   "components/layout",
   "components/shared/remote-banner",
+  "components/shared/dd1380-card",
+  "components/shared/figure-mark",
 ];
 
 const CATEGORIES = new Set(["layout", "pages", "shared", "ui"]);
