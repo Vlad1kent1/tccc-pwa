@@ -17,9 +17,7 @@ import { reportInvalidFields, reportSaveFailed, reportSaved, setSaveRetry } from
 import { isUnfinishedTime } from "@/lib/forms/time";
 import { responderPatch } from "@/lib/forms/values";
 import { networkNowIso } from "@/lib/network-clock";
-import { layoutPaper, pinPaperRow, unpinPaperRow } from "@/components/pages/casualties/board/paper-layout";
-import { reconcileTreatments } from "@/components/pages/casualties/board/treatment-flags";
-import { regionAt } from "@/components/pages/casualties/board/regions";
+import { layoutPaper, pinPaperRow, reconcileTreatments, regionAt, unpinPaperRow } from "@tccc/dd1380";
 import { commitBoard } from "@/components/pages/casualties/board/commit";
 import {
   EMPTY_SNAPSHOT,

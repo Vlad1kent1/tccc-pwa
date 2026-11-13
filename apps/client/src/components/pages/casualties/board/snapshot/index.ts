@@ -14,8 +14,7 @@ import type {
   VitalSigns,
 } from "@tccc/shared";
 import type { LocalCasualtyCard } from "@/lib/db";
-import { EMPTY_LAYOUT, layoutPaper, type PaperLayout } from "@/components/pages/casualties/board/paper-layout";
-import { tourniquetPlacement } from "@/components/pages/casualties/board/treatment-flags";
+import { EMPTY_LAYOUT, layoutPaper, tourniquetPlacement, type PaperLayout } from "@tccc/dd1380";
 
 export type BoardSlice =
   | "identity"

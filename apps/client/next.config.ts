@@ -12,6 +12,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // The dev indicator is a fixed layer. On iOS it sits above form fields and swallows taps.
   devIndicators: false,
+  // @tccc/dd1380 ships TypeScript source (no build step).
+  transpilePackages: ["@tccc/dd1380"],
   // Without this, Next answers the ngrok host with an HTML block page, and the
   // browser refuses to install /serwist/sw.js because its type is text/html.
   allowedDevOrigins: ["recent-strobe-saturday.ngrok-free.dev"],

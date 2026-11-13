@@ -8,7 +8,7 @@ import {
 import { lastTimeToken, timeTokenToIso } from "@/lib/forms/time";
 import { networkNowIso } from "@/lib/network-clock";
 import { boundedInt } from "@/components/pages/casualties/board/entry";
-import { fluidColumn, medicationColumn, vitalColumn } from "@/components/pages/casualties/board/paper-layout";
+import { fluidColumn, medicationColumn, vitalColumn } from "@tccc/dd1380";
 import type { BoardStore } from "@/components/pages/casualties/board/store";
 import type { BoardSnapshot } from "@/components/pages/casualties/board/snapshot";
 

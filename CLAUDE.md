@@ -10,6 +10,7 @@ apps/client/      Next.js PWA. UI, Dexie store, sync engine, service worker  →
                   (component-folder rules: layout/pages/shared/ui, components/ + workflow/ + __tests__/, max 300 lines)
 apps/server/      NestJS API. Sync push/pull/resolve, REST, Prisma           → apps/server/CLAUDE.md
 packages/shared/  @tccc/shared: Zod schemas, HLC, conflict policy (client↔server contract) → packages/shared/CLAUDE.md
+packages/dd1380/  @tccc/dd1380: DD1380 paper mapping, sites, layout, card copy; client-only, no React, source-consumed → packages/dd1380/CLAUDE.md
 e2e/              Playwright offline/sync scenarios (T-01…T-15), chaos middleware, metrics
 docs/             requirements, data model, test report (thesis artefacts)
 ```
@@ -25,7 +26,7 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
 | Lint (all) | `pnpm lint` (client ESLint + server oxlint) |
 | Format check | `pnpm format:check` (server Prettier) |
 | Unit tests (all) | `pnpm test` |
-| One package | `pnpm --filter <client\|server\|@tccc/shared\|e2e> <typecheck\|lint\|test\|build>` |
+| One package | `pnpm --filter <client\|server\|@tccc/shared\|@tccc/dd1380\|e2e> <typecheck\|lint\|test\|build>` |
 | Server API tests | `pnpm db:test:up`, then migrate `db_test`, then `pnpm --filter server test:e2e` (see `/verify-full`) |
 | Playwright | `pnpm test:e2e` (Docker; builds the client into `.next-e2e`; about 4 min) |
 | Everything | `/verify` (static checks + unit tests), `/verify-full` (+ API e2e + Playwright) |
@@ -46,7 +47,7 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
 6. A failure the user can't see is a bug. Show it in the save banner or the sync status, and never swallow it.
 
 ## Fragile areas (read the code and tests before touching)
-1. Time anchoring: `apps/client/src/lib/forms/time.ts`, `board/rows`, `board/tourniquet-panel`, `board/stamp-field`. Keystroke-level parsing (P0-001).
+1. Time anchoring: `apps/client/src/lib/forms/time.ts`, `lib/board/card-stamp.ts` (paper date/time → ISO), `board/rows`, `board/tourniquet-panel`, `board/stamp-field`. Keystroke-level parsing (P0-001).
 2. `BoardStore` hydrate state machine and `commitBoard`'s "delete what is not in the draft" (`board/store`, `board/commit`).
 3. Outbox rewriters: `coalesceOutbox`, `commitRebase`, `queuedAfterDecision`, together with `rebaseCard`'s newer-local-clock-wins rule (`lib/sync/*`).
 4. `nextChangeSeq` (`apps/server/src/prisma/change-seq.ts`) must be the last statement before every card write. Nothing else may set `changeSeq`.

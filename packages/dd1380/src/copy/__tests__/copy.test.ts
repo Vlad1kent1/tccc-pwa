@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { translations } from "@/components/pages/casualties/dd1380/copy";
+import { translations } from "..";
 
 function leaves(value: object, prefix = ""): string[] {
   return Object.entries(value).flatMap(([key, child]) => {

@@ -7,7 +7,7 @@ import { useT } from "@/i18n/use-t";
 import bodyBack from "@/components/pages/casualties/dd1380/assets/body-back.png";
 import bodyFront from "@/components/pages/casualties/dd1380/assets/body-front.png";
 import { figureMarkClass } from "@/components/pages/casualties/board/figure-mark";
-import { figureMarkStyle } from "@/components/pages/casualties/board/regions";
+import { figureMarkStyle } from "@tccc/dd1380";
 import { useBoard, useSlice } from "@/components/pages/casualties/board/store";
 import type { BoardSnapshot } from "@/components/pages/casualties/board/snapshot";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FluidKind, MedicationCategory } from "@tccc/shared";
-import { fluidColumn, hiddenRows, layoutPaper, pinPaperRow, unpinPaperRow, vitalColumn } from "./index";
+import { fluidColumn, hiddenRows, layoutPaper, pinPaperRow, unpinPaperRow, vitalColumn } from "../paper-layout";
 
 function vital(id: string, hour: number) {
   return { id, measuredAt: new Date(2026, 9, 1, hour, 0).toISOString() };

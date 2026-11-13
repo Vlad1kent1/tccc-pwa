@@ -2,8 +2,8 @@
 
 import { memo, type ReactNode } from "react";
 import { FluidKind, MedicationCategory } from "@tccc/shared";
-import { useCardCopy } from "@/components/pages/casualties/dd1380/copy";
-import { PAPER_CAPACITY } from "@/components/pages/casualties/dd1380/mapping";
+import { useCardCopy } from "@/components/pages/casualties/dd1380/use-card-copy";
+import { PAPER_CAPACITY } from "@tccc/dd1380";
 import { PaperFluidInput, PaperFluidRoute, PaperMedicationInput, PaperMedicationRoute } from "@/components/pages/casualties/dd1380/paper-cell";
 import { PaperOverflow } from "@/components/pages/casualties/dd1380/paper-overflow";
 import { RosterEvac } from "@/components/pages/casualties/dd1380/roster-evac";

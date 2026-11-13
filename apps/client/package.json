@@ -15,6 +15,7 @@
   "dependencies": {
     "@serwist/turbopack": "^9.5.12",
     "@tanstack/react-virtual": "^3.14.13",
+    "@tccc/dd1380": "workspace:*",
     "@tccc/shared": "workspace:*",
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^4.4.0",

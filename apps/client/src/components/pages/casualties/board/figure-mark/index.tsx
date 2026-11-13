@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { figureMarkStyle } from "@/components/pages/casualties/board/regions";
+import { figureMarkStyle } from "@tccc/dd1380";
 
 /** Centers an X on a 0–1 point inside a body figure. Edit and the DD1380 card share this frame. */
 export function figureMarkClass(extra = ""): string {

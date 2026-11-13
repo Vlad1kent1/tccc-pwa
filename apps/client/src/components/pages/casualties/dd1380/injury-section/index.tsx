@@ -5,23 +5,12 @@ import { createContext, memo, useContext, useMemo, useState, type CSSProperties,
 import { BodyView, type BodyView as BodyViewName } from "@tccc/shared";
 import bodyBack from "@/components/pages/casualties/dd1380/assets/body-back.png";
 import bodyFront from "@/components/pages/casualties/dd1380/assets/body-front.png";
-import { useCardCopy } from "@/components/pages/casualties/dd1380/copy";
+import { useCardCopy } from "@/components/pages/casualties/dd1380/use-card-copy";
 import { useChecked, useFieldFocus, useFieldId } from "@/components/pages/casualties/dd1380/form-context";
 import { useT } from "@/i18n/use-t";
-import { ANTERIOR_SITES, POSTERIOR_SITES, type InjurySite } from "@/components/pages/casualties/dd1380/injury-sites";
+import { ANTERIOR_SITES, POSTERIOR_SITES, figureMarkStyle, isPaperSite, type InjurySite, type StoredMark } from "@tccc/dd1380";
 import { FigureMark } from "@/components/pages/casualties/board/figure-mark";
-import { figureMarkStyle } from "@/components/pages/casualties/board/regions";
-import { isPaperSite } from "@/components/pages/casualties/dd1380/mapping";
 import { DropHeading, Line } from "@/components/pages/casualties/dd1380/ua-fields";
-
-export interface StoredMark {
-  id: string;
-  view: BodyViewName;
-  x: number;
-  y: number;
-  /** The printed target this row marks; null for an X placed freely on the figure. */
-  siteCode: string | null;
-}
 
 const MarksContext = createContext<readonly StoredMark[]>([]);
 

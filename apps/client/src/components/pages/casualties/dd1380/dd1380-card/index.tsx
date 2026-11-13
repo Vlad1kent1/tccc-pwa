@@ -4,8 +4,9 @@ import { memo } from "react";
 import { CardBack } from "@/components/pages/casualties/dd1380/card-back";
 import { CardFront } from "@/components/pages/casualties/dd1380/card-front";
 import { formSans, formSerif } from "@/components/pages/casualties/dd1380/fonts";
-import { Dd1380FormProvider, type Dd1380FormSource } from "@/components/pages/casualties/dd1380/form-context";
-import { InjuryMarksProvider, type StoredMark } from "@/components/pages/casualties/dd1380/injury-section";
+import type { Dd1380FormSource, StoredMark } from "@tccc/dd1380";
+import { Dd1380FormProvider } from "@/components/pages/casualties/dd1380/form-context";
+import { InjuryMarksProvider } from "@/components/pages/casualties/dd1380/injury-section";
 
 const NO_MARKS: readonly StoredMark[] = [];
 

@@ -1,0 +1,24 @@
+{
+  "name": "@tccc/dd1380",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tccc/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^4.1.11"
+  }
+}

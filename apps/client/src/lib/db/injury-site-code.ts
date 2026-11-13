@@ -1,4 +1,4 @@
-import { ANTERIOR_SITES, POSTERIOR_SITES } from "@/components/pages/casualties/dd1380/injury-sites";
+import { ANTERIOR_SITES, POSTERIOR_SITES } from "@tccc/dd1380";
 
 const SITE_CODES = new Set([...ANTERIOR_SITES, ...POSTERIOR_SITES].map((site) => site.id));
 

@@ -1,5 +1,5 @@
 import { FluidKind, MedicationCategory } from "@tccc/shared";
-import { PAPER_CAPACITY, slotKey, vitalSlotKey } from "@/components/pages/casualties/dd1380/mapping";
+import { PAPER_CAPACITY, slotKey, vitalSlotKey } from "./mapping/slots";
 
 /**
  * Which row each printed column of the DD1380 tables shows. A column is bound to a

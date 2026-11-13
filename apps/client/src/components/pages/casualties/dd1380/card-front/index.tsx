@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { useCardCopy } from "@/components/pages/casualties/dd1380/copy";
+import { useCardCopy } from "@/components/pages/casualties/dd1380/use-card-copy";
 import { InjurySection } from "@/components/pages/casualties/dd1380/injury-section";
 import { RosterEvac } from "@/components/pages/casualties/dd1380/roster-evac";
 import { PaperVitalInput, PaperVitalSelect } from "@/components/pages/casualties/dd1380/paper-cell";

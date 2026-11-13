@@ -1,6 +1,6 @@
 "use client";
 
-import { useCardCopy } from "@/components/pages/casualties/dd1380/copy";
+import { useCardCopy } from "@/components/pages/casualties/dd1380/use-card-copy";
 import { Choice, Dash, Line } from "@/components/pages/casualties/dd1380/ua-fields";
 
 const EVAC = ["evac_urgent", "evac_priority", "evac_routine"] as const;

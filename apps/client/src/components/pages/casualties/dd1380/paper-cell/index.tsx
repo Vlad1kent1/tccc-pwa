@@ -2,9 +2,8 @@
 
 import type { FluidKind as FluidKindName, MedicationCategory as MedicationCategoryName } from "@tccc/shared";
 import { formatHmm } from "@/lib/forms/time";
-import { parseAvpu, parseRoute, routeToPaper } from "@/components/pages/casualties/dd1380/mapping";
+import { fluidColumn, medicationColumn, parseAvpu, parseRoute, routeToPaper, vitalColumn } from "@tccc/dd1380";
 import { useCardChoices } from "@/components/pages/casualties/dd1380/ua-fields";
-import { fluidColumn, medicationColumn, vitalColumn } from "@/components/pages/casualties/board/paper-layout";
 import {
   paperRow,
   rowForColumn,

@@ -11,10 +11,10 @@
     "db:migrate": "pnpm --filter server exec prisma migrate dev",
     "db:seed:mock": "pnpm --filter server db:seed:mock",
     "db:wipe": "pnpm --filter server db:wipe",
-    "typecheck": "pnpm --filter @tccc/shared build && pnpm --no-bail --filter @tccc/shared --filter client --filter server --filter e2e typecheck",
-    "lint": "pnpm --no-bail --filter client --filter server lint",
+    "typecheck": "pnpm --filter @tccc/shared build && pnpm --no-bail --filter @tccc/shared --filter @tccc/dd1380 --filter client --filter server --filter e2e typecheck",
+    "lint": "pnpm --no-bail --filter @tccc/dd1380 --filter client --filter server lint",
     "format:check": "pnpm --filter server format:check",
-    "test": "pnpm --filter client --filter server --filter @tccc/shared test",
+    "test": "pnpm --filter client --filter server --filter @tccc/shared --filter @tccc/dd1380 test",
     "test:e2e": "pnpm db:test:up && pnpm --filter e2e test"
   }
 }

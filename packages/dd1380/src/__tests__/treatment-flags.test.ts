@@ -1,6 +1,6 @@
 import { CirculationTreatment, OtherTreatment, emptyCardFields } from "@tccc/shared";
 import { describe, expect, it } from "vitest";
-import { reconcileTreatments, tourniquetPlacement } from "./index";
+import { reconcileTreatments, tourniquetPlacement } from "../treatment-flags";
 
 const empty = emptyCardFields();
 

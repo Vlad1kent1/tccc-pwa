@@ -1,6 +1,6 @@
 import { BodyRegion, BodyView, type BodyView as BodyViewName } from "@tccc/shared";
-import { regionFor } from "@/components/pages/casualties/dd1380/mapping";
-import { ANTERIOR_SITES, POSTERIOR_SITES, type InjurySite } from "@/components/pages/casualties/dd1380/injury-sites";
+import { regionFor } from "./mapping/sites";
+import { ANTERIOR_SITES, POSTERIOR_SITES, type InjurySite } from "./injury-sites";
 
 const FRONT_BOX = { x0: 120.6, y0: 231.85, x1: 221.4, y1: 458.65 };
 const BACK_BOX = { x0: 295.2, y0: 231.85, x1: 396, y1: 458.65 };

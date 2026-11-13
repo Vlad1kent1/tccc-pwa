@@ -11,7 +11,7 @@ import {
 } from "@tccc/shared";
 import { casualtyRepo, db as appDb, type LocalCasualtyCard } from "@/lib/db";
 import { clearSaveStatus, getSaveStatus, retrySave } from "@/lib/forms/save-status";
-import { vitalColumn } from "@/components/pages/casualties/board/paper-layout";
+import { vitalColumn } from "@tccc/dd1380";
 import { paperRow, rowForColumn, saveVitalSlot } from "@/components/pages/casualties/board/rows";
 import { createCasualtyRepo, type CasualtyRepo } from "@/lib/db/casualtyRepo";
 import { TcccDB } from "@/lib/db/schema";

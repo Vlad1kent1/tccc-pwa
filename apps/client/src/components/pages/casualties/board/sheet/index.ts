@@ -1,16 +1,16 @@
 import { BodyView, Limb, newId } from "@tccc/shared";
 import { sameMinute } from "@/lib/forms/time";
-import type { Dd1380FormSource, Dd1380Values } from "@/components/pages/casualties/dd1380/form-context";
-import type { StoredMark } from "@/components/pages/casualties/dd1380/injury-section";
 import {
   cardToValues,
   isPaperSite,
   limbSlots,
   markedSites,
-  parseCardStamp,
-  valuesToCardPatch,
+  type Dd1380FormSource,
+  type Dd1380Values,
   type SheetSource,
-} from "@/components/pages/casualties/dd1380/mapping";
+  type StoredMark,
+} from "@tccc/dd1380";
+import { parseCardStamp, valuesToCardPatch } from "@/lib/board/card-stamp";
 import type { BoardSnapshot, BoardTreatments } from "@/components/pages/casualties/board/snapshot";
 import type { BoardStore } from "@/components/pages/casualties/board/store";
 

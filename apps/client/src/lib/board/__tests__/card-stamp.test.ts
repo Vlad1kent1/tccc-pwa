@@ -1,14 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { EvacPriority, Gender, MechanismOfInjury } from "@tccc/shared";
-import { cardNameLine, formatCardDate, formatCardTime, parseCardStamp, splitName, valuesToCardPatch } from "@/components/pages/casualties/dd1380/mapping";
+import { parseCardStamp, valuesToCardPatch } from "../card-stamp";
 
 describe("DD Form 1380 mapping", () => {
-  it("formats the paper date and time from an ISO stamp", () => {
-    const iso = new Date(2026, 9, 1, 14, 5).toISOString();
-    expect(formatCardDate(iso)).toBe("01-OCT-26");
-    expect(formatCardTime(iso)).toBe("1405");
-  });
-
   it("parses DD-MMM-YY and HHmm back to a timestamp", () => {
     const iso = parseCardStamp("01-OCT-26", "1405");
     expect(iso).toBeTruthy();
@@ -68,17 +62,4 @@ describe("DD Form 1380 mapping", () => {
     expect(valuesToCardPatch({ date: "01-OCT-26", time: "" }).injuredAt).toBeUndefined();
     expect(valuesToCardPatch({ date: "", time: "" }).injuredAt).toBeNull();
   });
-
-  it("round-trips names through the single name line", () => {
-    for (const name of [
-      { lastName: "Van Damme", firstName: null },
-      { lastName: "Doe", firstName: "John" },
-      { lastName: "De la Cruz", firstName: "Maria Elena" },
-      { lastName: null, firstName: "Olena" },
-      { lastName: null, firstName: null },
-    ]) {
-      expect(splitName(cardNameLine(name))).toEqual(name);
-    }
-  });
 });
-
