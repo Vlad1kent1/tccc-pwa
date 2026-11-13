@@ -17,6 +17,7 @@ const MIGRATED = [
   "components/pages/home",
   "components/pages/offline",
   "components/shared/sync-badge",
+  "components/layout",
 ];
 
 const CATEGORIES = new Set(["layout", "pages", "shared", "ui"]);

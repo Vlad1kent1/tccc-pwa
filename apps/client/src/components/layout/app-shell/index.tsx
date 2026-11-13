@@ -6,11 +6,7 @@ import { useEffect, type ReactNode } from "react";
 import { loadStoredLocale } from "@/i18n/locale";
 import { useT } from "@/i18n/use-t";
 import { loadStoredTheme } from "@/lib/theme";
-import { AuthBanner } from "@/components/layout/auth-banner";
-import { ConnectivityIndicator } from "@/components/layout/connectivity-indicator";
-import { PersistenceBanner } from "@/components/layout/persistence-banner";
-import { SaveStatusBanner } from "@/components/layout/save-status-banner";
-import { UpdateBanner } from "@/components/layout/update-banner";
+import { AuthBanner, ConnectivityIndicator, PersistenceBanner, SaveStatusBanner, UpdateBanner } from "./components";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();

@@ -51,7 +51,7 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
 3. Outbox rewriters: `coalesceOutbox`, `commitRebase`, `queuedAfterDecision`, together with `rebaseCard`'s newer-local-clock-wins rule (`lib/sync/*`).
 4. `nextChangeSeq` (`apps/server/src/prisma/change-seq.ts`) must be the last statement before every card write. Nothing else may set `changeSeq`.
 5. Strict pull parsing combined with long-lived cached PWAs (`lib/sync/api.ts`, `packages/shared/src/schemas`). See P1-001.
-6. Service-worker lifecycle: `app/sw.ts`, `lib/sw-navigation.ts`, `app/serwist/[path]/route.ts`, the update banner, and the `SerwistProvider` defaults.
+6. Service-worker lifecycle: `app/sw.ts`, `lib/sw-navigation.ts`, `app/serwist/[path]/route.ts`, the update banner (`components/layout/app-shell/components/update-banner`), and the `SerwistProvider` defaults.
 7. The e2e helper layer (`e2e/src/app.ts`) and the metrics pipeline that feeds `docs/test-report.md`.
 8. Destructive DB scripts (`db:wipe`, `db:seed:mock`, `db:migrate`) have no localhost guard for humans (P1-008).
 
