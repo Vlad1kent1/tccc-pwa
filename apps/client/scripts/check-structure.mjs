@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
 
 /** Paths (relative to src, "/"-separated) that already follow the rules. */
-const MIGRATED = ["lib"];
+const MIGRATED = ["lib", "components/pages/settings"];
 
 const CATEGORIES = new Set(["layout", "pages", "shared", "ui"]);
 /** Folders with a fixed meaning inside a component folder. */

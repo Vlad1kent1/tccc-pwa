@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { setPersistenceDenied } from "@/components/layout/persistence-banner";
+import { setPersistenceDenied } from "@/lib/persistence-denied";
 import { getStorageStatus, requestPersistentStorage, type StorageStatus } from "@/lib/db";
 
 function formatBytes(bytes: number | null): string {

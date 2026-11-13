@@ -2,26 +2,10 @@
 
 import { useSyncExternalStore } from "react";
 import { useT } from "@/i18n/use-t";
-
-let denied = false;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const listener of listeners) listener();
-}
-
-export function setPersistenceDenied(value: boolean): void {
-  denied = value;
-  emit();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+import { isPersistenceDenied, setPersistenceDenied, subscribePersistenceDenied } from "@/lib/persistence-denied";
 
 export function PersistenceBanner() {
-  const show = useSyncExternalStore(subscribe, () => denied, () => false);
+  const show = useSyncExternalStore(subscribePersistenceDenied, isPersistenceDenied, () => false);
   const { t } = useT();
   if (!show) return null;
 

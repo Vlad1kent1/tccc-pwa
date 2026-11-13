@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { setPersistenceDenied } from "@/components/layout/persistence-banner";
+import { setPersistenceDenied } from "@/lib/persistence-denied";
 import { casualtyRepo, db, ensurePersistentStorage, finishLegacyExtrasMigration, loadServerClockOffset } from "@/lib/db";
 import { startSyncTriggers } from "@/lib/sync";
 
