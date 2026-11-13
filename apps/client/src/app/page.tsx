@@ -1,5 +1,5 @@
-import { CasualtyList } from "@/components/pages/home/casualty-list";
+import { HomePage } from "@/components/pages/home";
 
 export default function Home() {
-  return <CasualtyList />;
+  return <HomePage />;
 }

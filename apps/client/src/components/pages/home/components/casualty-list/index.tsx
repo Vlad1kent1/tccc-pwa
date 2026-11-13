@@ -8,9 +8,8 @@ import { EvacPriority } from "@tccc/shared";
 import { useT } from "@/i18n/use-t";
 import { db, type LocalCasualtyCard, type SyncStatus } from "@/lib/db";
 import { listCasualties, type PriorityFilter, type SyncFilter } from "@/lib/casualties/list";
-import { PriorityBadge } from "@/components/ui/priority-badge";
-import { SyncBadge } from "@/components/ui/sync-badge";
-import { SyncStatusBar } from "@/components/pages/home/sync-status-bar";
+import { PriorityBadge, SyncStatusBar } from "./components";
+import { SyncBadge } from "@/components/shared/sync-badge";
 
 const priorities = [EvacPriority.URGENT, EvacPriority.PRIORITY, EvacPriority.ROUTINE] as const;
 const syncStates: SyncStatus[] = ["pending", "synced", "conflict"];
