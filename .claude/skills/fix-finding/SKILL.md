@@ -55,9 +55,11 @@ Explain the options and their trade-offs, then wait.
 
 ## 7. Commit (never push)
 - Stage only the test and the fix: `git add <files>`.
-- Write one Conventional Commit: `fix(<client|server|shared|e2e>): <what changed> (<ID>)`.
-  - Body: the bug, the fix, and the test that covers it.
-  - End it with the attribution trailer the session requires.
+- Write one commit following the root CLAUDE.md "Commits" rules:
+  - Subject: `fix(<client|server|shared|e2e>): <imperative summary> (<ID>)`, max 72 characters.
+  - Body optional: at most 3 short lines on WHY. No file lists, test counts, command output or verification notes; those go in the step 8 report.
+  - Add an attribution trailer only if the session requires one.
+- The fix and its regression test go in one commit. Unrelated cleanup goes in a separate commit.
 - **Never edit, stage or commit `CODE_REVIEW.md`.** It is local and gitignored. The finding is marked fixed with `/mark-fixed` after the merge.
 
 ## 8. Report

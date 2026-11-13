@@ -78,6 +78,12 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
   - Scopes: `client`, `server`, `shared`, `e2e`. Omit the scope only for repo-wide changes.
 - Never push, force-push, `reset --hard`, `clean -f` or drop stashes. Branch off `main` for every fix.
 
+### Commits
+- Subject: Conventional Commit, imperative, max 72 characters, e.g. `fix(client): keep tourniquet time when retyping type (P0-002)`.
+- Body is optional. If needed, at most 3 short lines or bullets explaining WHY, not what.
+  - No lists of changed files, no test counts, no command output, no verification notes. Those belong in the chat report, not in git history.
+- One logical change per commit. A fix and its regression test together is fine; unrelated cleanup goes in a separate commit.
+
 ## Reference docs (read on demand)
 - `CODE_REVIEW.md` (local, gitignored, may be missing): findings, fix order, project profile (§6)
 - `docs/requirements.md`: use cases, FR/NFR, test IDs

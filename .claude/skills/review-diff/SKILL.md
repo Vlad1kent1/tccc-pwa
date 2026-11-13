@@ -22,7 +22,7 @@ argument-hint: "[base-ref, default: uncommitted changes]"
 - Check correctness, edge cases, error handling, test coverage, and the conventions:
   - client: i18n en/uk parity, component architecture;
   - server: ESM `.js` imports, DTO `static schema`, `@Public()` use;
-  - commits: Conventional Commits.
+  - commits: the root CLAUDE.md "Commits" rules (Conventional Commit subject ≤72 chars, short WHY-only body, one logical change).
 - Domain safety checks:
   - casualty data loss or silent overwrite;
   - wrong clinical or tourniquet times;
