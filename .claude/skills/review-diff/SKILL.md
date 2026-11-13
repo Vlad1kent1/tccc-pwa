@@ -28,7 +28,7 @@ argument-hint: "[base-ref, default: uncommitted changes]"
   - wrong clinical or tourniquet times;
   - PII in logs, caches or error responses;
   - any change to sync, merge, outbox, rebase, HLC or time parsing without a regression test that would fail without the fix.
-- If the diff touches `apps/client/src/lib/{sync,db}`, `apps/server/src/{sync,prisma}` or `packages/shared`, delegate that part to the **sync-reviewer** subagent and merge its findings.
+- If the diff touches `apps/client/src/lib/{sync,db,board}`, `apps/server/src/{sync,prisma}`, `packages/shared` or `packages/dd1380`, delegate that part to the **sync-reviewer** subagent and merge its findings.
 - Verify each finding before reporting it. Prefer a few real issues over speculation.
 
 ## 4. Report (no edits)

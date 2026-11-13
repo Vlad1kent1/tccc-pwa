@@ -51,7 +51,7 @@ Explain the options and their trade-offs, then wait.
   `pnpm --filter <pkg> typecheck`, `pnpm --filter <pkg> lint` (client/server), `pnpm --filter <pkg> test`.
 - If the change is in `packages/shared`, also run `pnpm typecheck` (it rebuilds shared and checks every consumer).
 - If server sync or prisma code changed and Docker is running, also run the server API e2e suite as in `/verify-full`. Ask before running Playwright.
-- For changes in `apps/client/src/lib/{sync,db}`, `apps/server/src/{sync,prisma}`, `packages/shared` or time parsing, run the **sync-reviewer** subagent on the diff. Address every Confirmed finding it reports.
+- For changes in `apps/client/src/lib/{sync,db,board}`, `apps/server/src/{sync,prisma}`, `packages/shared`, `packages/dd1380` or time parsing, run the **sync-reviewer** subagent on the diff. Address every Confirmed finding it reports.
 
 ## 7. Commit (never push)
 - Stage only the test and the fix: `git add <files>`.
