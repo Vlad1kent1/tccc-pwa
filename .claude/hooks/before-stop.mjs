@@ -11,6 +11,7 @@ const CONFIG = /(^|\/)(package\.json|tsconfig(\.[\w-]+)?\.json)$/;
 
 const PACKAGES = {
   shared: { dir: "packages/shared", prefix: "packages/shared/" },
+  dd1380: { dir: "packages/dd1380", prefix: "packages/dd1380/" },
   client: { dir: "apps/client", prefix: "apps/client/" },
   server: { dir: "apps/server", prefix: "apps/server/" },
   e2e: { dir: "e2e", prefix: "e2e/" },
@@ -39,6 +40,8 @@ const touched = new Set(
 );
 // Client, server and e2e compile against shared's dist, so a shared change re-checks all of them.
 if (touched.has("shared")) ["client", "server", "e2e"].forEach((name) => touched.add(name));
+// The client compiles @tccc/dd1380 from source, so a dd1380 change re-checks the client.
+if (touched.has("dd1380")) touched.add("client");
 
 const failures = [];
 const passed = [];
@@ -53,6 +56,7 @@ if (touched.has("shared")) {
   }
 }
 for (const [name, args] of [
+  ["dd1380", ["--noEmit"]],
   ["client", ["--noEmit"]],
   ["server", ["--noEmit", "-p", "tsconfig.json"]],
   ["e2e", ["--noEmit"]],
@@ -71,6 +75,16 @@ if (lintable.length > 0) {
   const eslint = runNode(path.join(clientDir, "node_modules", "eslint", "bin", "eslint.js"), lintable, { cwd: clientDir });
   if (eslint.status !== 0) failures.push(`eslint (client, ${lintable.length} file(s)):\n${lastLines(eslint.stdout + eslint.stderr, 25)}`);
   else passed.push("eslint");
+}
+
+const dd1380Dir = path.join(projectDir, "packages", "dd1380");
+const dd1380Lintable = changed
+  .filter((rel) => rel.startsWith("packages/dd1380/") && CODE.test(rel))
+  .map((rel) => path.relative(dd1380Dir, path.join(projectDir, rel)));
+if (dd1380Lintable.length > 0) {
+  const eslint = runNode(path.join(dd1380Dir, "node_modules", "eslint", "bin", "eslint.js"), dd1380Lintable, { cwd: dd1380Dir });
+  if (eslint.status !== 0) failures.push(`eslint (dd1380, ${dd1380Lintable.length} file(s)):\n${lastLines(eslint.stdout + eslint.stderr, 25)}`);
+  else passed.push("eslint dd1380");
 }
 
 if (failures.length === 0) {

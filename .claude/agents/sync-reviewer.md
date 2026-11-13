@@ -1,6 +1,6 @@
 ---
 name: sync-reviewer
-description: Read-only reviewer for diffs touching apps/client/src/lib/{sync,db}, apps/server/src/{sync,prisma} or packages/shared (outbox, rebase, merge, HLC, changeSeq, wire schemas). Use proactively before committing changes there.
+description: Read-only reviewer for diffs touching apps/client/src/lib/{sync,db}, apps/server/src/{sync,prisma}, packages/shared (outbox, rebase, merge, HLC, changeSeq, wire schemas) or packages/dd1380 (paper-card mapping and card time parsing that feed card writes; injury-site codes read by the Dexie migration). Use proactively before committing changes there.
 tools: Read, Grep, Glob, Bash
 model: inherit
 ---
