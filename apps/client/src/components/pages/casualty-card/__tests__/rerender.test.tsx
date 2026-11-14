@@ -30,7 +30,7 @@ vi.mock("@/components/shared/dd1380-card/components/injury-section", async (impo
   };
 });
 
-import { CardView } from "@/components/pages/casualties/card-view";
+import { CardView } from "@/components/pages/casualty-card";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

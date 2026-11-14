@@ -21,6 +21,8 @@ const MIGRATED = [
   "components/shared/remote-banner",
   "components/shared/dd1380-card",
   "components/shared/figure-mark",
+  "components/shared/missing-card",
+  "components/pages/casualty-card",
 ];
 
 const CATEGORIES = new Set(["layout", "pages", "shared", "ui"]);

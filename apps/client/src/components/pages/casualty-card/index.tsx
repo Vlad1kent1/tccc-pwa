@@ -9,15 +9,15 @@ import {
   PaperFluidRoute,
   PaperMedicationInput,
   PaperMedicationRoute,
+  PaperOverflow,
   PaperVitalInput,
   PaperVitalSelect,
-} from "@/components/pages/casualties/dd1380/paper-cell";
-import { PaperOverflow } from "@/components/pages/casualties/dd1380/paper-overflow";
+} from "./components";
 import { useT } from "@/i18n/use-t";
 import type { LocalCasualtyCard } from "@/lib/db";
-import { CardLoading, MissingCard } from "@/components/ui/missing-card";
+import { CardLoading, MissingCard } from "@/components/shared/missing-card";
 import { SyncBadge } from "@/components/shared/sync-badge";
-import { useLocalCard } from "@/components/pages/casualties/use-local-card";
+import { useLocalCard } from "@/lib/casualties/use-local-card";
 import {
   boardForCard,
   BoardProvider,

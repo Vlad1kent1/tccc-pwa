@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { CardView } from "@/components/pages/casualties/card-view";
+import { CardView } from "@/components/pages/casualty-card";
 
 export default function CasualtyCardPage() {
   return (
