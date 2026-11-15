@@ -1,7 +1,7 @@
 import { cardFieldsSchema, type CardField, type CardPatch } from "@tccc/shared";
 
 /** Top-level text only: nested values such as `rowDrafts` keep their raw cell text. */
-function normalizeText(value: unknown): unknown {
+export function normalizeText(value: unknown): unknown {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;

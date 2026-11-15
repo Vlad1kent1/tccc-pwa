@@ -12,7 +12,7 @@ import {
   type MechanismOfInjury,
 } from "@tccc/shared";
 import { casualtyRepo, db, getResponderProfile, type CasualtyRepo, type LocalCasualtyCard } from "@/lib/db";
-import { cleanCardPatch, type CleanPatch } from "@/lib/forms/card-patch";
+import { cleanCardPatch, normalizeText, type CleanPatch } from "@/lib/forms/card-patch";
 import { reportInvalidFields, reportSaveFailed, reportSaved, setSaveRetry } from "@/lib/forms/save-status";
 import { isUnfinishedTime } from "@/lib/forms/time";
 import { responderPatch } from "@/lib/forms/values";
@@ -223,8 +223,10 @@ export class BoardStore {
     // A dirty slice keeps what is on screen. A clean one takes the card's value, but
     // keeps its old object when nothing in it changed: every save re-reads the card,
     // and new objects would re-render every block and the injury figures each time.
+    // Text that saves to the stored value (a trailing space or newline the save trimmed)
+    // also stays as typed, so the next keystroke continues it (P1-007).
     const take = <K extends keyof BoardSnapshot>(key: K, slice: BoardSlice): BoardSnapshot[K] =>
-      this.dirty.has(slice) || sameJson(current[key], next[key]) ? current[key] : next[key];
+      this.dirty.has(slice) ? current[key] : keepTyped(current[key], next[key]);
     const merged: BoardSnapshot = {
       ...next,
       remote: false,
@@ -670,6 +672,30 @@ export class BoardStore {
 
 function sameJson(a: unknown, b: unknown): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** True when the shown value saves as `stored` once normalized like a save (`cleanCardPatch`). */
+function savesAs(shown: unknown, stored: unknown): boolean {
+  return sameJson(shown, stored) || sameJson(normalizeText(shown), stored);
+}
+
+/**
+ * The stored value, except that shown text which saves as it is kept as typed. A section object
+ * is merged field by field; when every field is kept, the shown object itself is returned.
+ */
+function keepTyped<T>(shown: T, stored: T): T {
+  if (!isRecord(shown) || !isRecord(stored)) return savesAs(shown, stored) ? shown : stored;
+  let keptAll = true;
+  const merged: Record<string, unknown> = { ...stored };
+  for (const key of Object.keys(stored)) {
+    if (savesAs(shown[key], stored[key])) merged[key] = shown[key];
+    else keptAll = false;
+  }
+  return keptAll ? shown : (merged as T);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function upsertById<T extends { id: string }>(rows: readonly T[], row: T): T[] {

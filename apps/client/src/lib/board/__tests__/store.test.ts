@@ -76,6 +76,59 @@ describe("board store", () => {
     expect(board.getSnapshot().injuries).toBe(injuries);
   });
 
+  it("keeps a trailing space or newline on screen after the debounced save comes back (P1-007)", async () => {
+    const board = draft();
+    board.editIdentity({ lastName: "Adler" }, "now");
+    expect(await board.save()).toBe(true);
+    const id = board.cardId!;
+
+    // Keystroke by keystroke, with a pause (a save and a live card update) after the space.
+    for (const text of ["V", "Va", "Van", "Van "]) board.editIdentity({ firstName: text });
+    for (const text of ["line one", "line one\n"]) board.editNotes(text);
+    for (const text of ["CAT", "CAT "]) board.editTreatments({ circulationTqType: text }, "debounce");
+    expect(await board.flush()).toBe(true);
+    board.hydrate((await casualtyRepo.getById(id))!);
+    expect(board.getSnapshot().identity.firstName).toBe("Van ");
+    expect(board.getSnapshot().notes).toBe("line one\n");
+    expect(board.getSnapshot().treatments.circulationTqType).toBe("CAT ");
+
+    for (const text of ["Van D", "Van Da", "Van Damme"]) board.editIdentity({ firstName: text });
+    board.editNotes("line one\nline two");
+    board.editTreatments({ circulationTqType: "CAT Gen7" }, "debounce");
+    expect(await board.flush()).toBe(true);
+    const stored = (await casualtyRepo.getById(id))!;
+    expect(stored.firstName).toBe("Van Damme");
+    expect(stored.notes).toBe("line one\nline two");
+    expect(stored.circulationTqType).toBe("CAT Gen7");
+  });
+
+  it("still takes a stored value that differs by more than trimming", async () => {
+    const board = draft();
+    board.editIdentity({ lastName: "Adler", firstName: "Van " }, "now");
+    expect(await board.save()).toBe(true);
+    const id = board.cardId!;
+    await casualtyRepo.updateFields(id, { firstName: "Ivan" });
+    board.hydrate((await casualtyRepo.getById(id))!);
+    expect(board.getSnapshot().identity.firstName).toBe("Ivan");
+  });
+
+  it("keeps the typed text when another field of its section changes remotely", async () => {
+    const board = draft();
+    board.editIdentity({ lastName: "Adler" }, "now");
+    expect(await board.save()).toBe(true);
+    const id = board.cardId!;
+    for (const text of ["V", "Va", "Van", "Van "]) board.editIdentity({ firstName: text });
+    board.editIdentity({ allergies: " " });
+    expect(await board.flush()).toBe(true);
+    await casualtyRepo.updateFields(id, { unit: "1 Bn" });
+    board.hydrate((await casualtyRepo.getById(id))!);
+    const { identity } = board.getSnapshot();
+    expect(identity.unit).toBe("1 Bn");
+    expect(identity.firstName).toBe("Van ");
+    expect(identity.allergies).toBe(" ");
+    expect((await casualtyRepo.getById(id))!.allergies).toBeNull();
+  });
+
   it("writes treatments, vitals, fluids, medications, notes, and responder", async () => {
     const board = draft();
     board.editIdentity({ lastName: "Adler" }, "now");
