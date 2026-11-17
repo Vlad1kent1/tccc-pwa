@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- push/pull orchestration not split yet; tracked in CODE_REVIEW.md (P2-023, phase 9 note) */
 import {
   conflictNeedsReview,
   initialHlc,

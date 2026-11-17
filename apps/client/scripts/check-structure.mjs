@@ -1,30 +1,10 @@
 // Checks the component-folder rules that ESLint cannot see (apps/client/CLAUDE.md, "Component architecture").
-// Run by `pnpm --filter client lint` after ESLint.
-//
-// Migration mode: a violation fails the check only under a MIGRATED path; anywhere else it is a warning,
-// so lint stays green while the refactor moves code phase by phase. Phase 9 removes MIGRATED and every
-// violation fails.
+// Run by `pnpm --filter client lint` after ESLint. Every violation fails the check.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
-
-/** Paths (relative to src, "/"-separated) that already follow the rules. */
-const MIGRATED = [
-  "lib",
-  "components/pages/settings",
-  "components/pages/home",
-  "components/pages/offline",
-  "components/shared/sync-badge",
-  "components/layout",
-  "components/shared/remote-banner",
-  "components/shared/dd1380-card",
-  "components/shared/figure-mark",
-  "components/shared/missing-card",
-  "components/pages/casualty-card",
-  "components/pages/casualty-board",
-];
 
 const CATEGORIES = new Set(["layout", "pages", "shared", "ui"]);
 /** Folders with a fixed meaning inside a component folder. */
@@ -34,11 +14,9 @@ const MAX_DEPTH = 3;
 const TEST_FILE = /\.test\.tsx?$/;
 
 const errors = [];
-const warnings = [];
 
 function report(rel, message) {
-  const migrated = MIGRATED.some((prefix) => rel === prefix || rel.startsWith(`${prefix}/`));
-  (migrated ? errors : warnings).push(`${rel}: ${message}`);
+  errors.push(`${rel}: ${message}`);
 }
 
 function rel(abs) {
@@ -109,7 +87,6 @@ for (const entry of entries(componentsDir)) {
 checkTests(componentsDir);
 checkTests(path.join(SRC, "lib"));
 
-for (const line of warnings) console.warn(`warn   ${line}`);
 for (const line of errors) console.error(`error  ${line}`);
-console.log(`check-structure: ${errors.length} error(s), ${warnings.length} warning(s)`);
+console.log(`check-structure: ${errors.length} error(s)`);
 process.exit(errors.length > 0 ? 1 : 0);

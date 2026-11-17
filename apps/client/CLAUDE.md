@@ -5,7 +5,7 @@ Next.js 16 App Router PWA with React 19, Turbopack, Serwist, Dexie and Tailwind 
 **Next.js 16 differs from older versions.** Before using an App Router, caching or config API you are unsure about, read the bundled guide in `node_modules/next/dist/docs/` and follow its deprecation notices.
 
 ## Component architecture
-Every component now follows this layout; the refactor's last phase only tightens the checks. `pnpm --filter client lint` enforces the rules: ESLint for imports and size, `scripts/check-structure.mjs` for folders. Until that phase, `check-structure` fails only under its `MIGRATED` paths and warns elsewhere.
+`pnpm --filter client lint` enforces these rules, and any violation fails it: ESLint checks imports, layer boundaries and size, and `scripts/check-structure.mjs` checks folders.
 
 - **`src/app` is for routing only:** `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `route.ts`, plus `sw.ts`, `manifest.ts`, `globals.css` and the icons. Each `page.tsx` renders one component from `components/pages/` and holds only route concerns such as `metadata` and `Suspense`.
 - **`src/components` has exactly four folders:**
@@ -25,7 +25,8 @@ Every component now follows this layout; the refactor's last phase only tightens
   - Keep `"use client"` on each client module, and don't make a server component depend on a barrel that pulls in server-incompatible code.
 - **Imports:** inside a component folder, use relative imports to its own `./components`, `./workflow` and `./assets`. Everywhere else, use absolute `@/…` imports.
 - **`src/lib/`** holds app-wide logic: db, sync, forms, network clock, `sw-navigation`. `workflow/` is component-local only.
-- **Size:** ESLint `max-lines` is 300 (blank lines and comments skipped; tests and the i18n dictionaries are exempt). It is `warn` until the refactor ends, then `error`.
+- **Boundaries** (ESLint `no-restricted-imports` overrides): `shared/**` never imports from `pages/**`; `shared/dd1380-card/**` never imports `@/lib/board` (board-bound cells come in through the `PaperCells` slot); `ui/**` never imports `@tccc/shared`, `@/lib/db` or `@/lib/sync`.
+- **Size:** ESLint `max-lines` is 300 and an error (blank lines and comments skipped; tests and the i18n dictionaries are exempt). Only two files carry a file-level disable, each citing `CODE_REVIEW.md`: `lib/board/store/board-store.ts` (P2-023) and `lib/sync/pipeline.ts`. Split a file rather than adding another.
 - **When moving code:** use `git mv` and update every import path. Also update moved paths in the CLAUDE.md files, `.claude/skills` and `.claude/agents`.
 
 ## Client rules
