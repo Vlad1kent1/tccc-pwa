@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { TacticalBoard } from "@/components/pages/casualties/board/tactical-board";
+import { TacticalBoard } from "@/components/pages/casualty-board";
 
 export default function EditCasualtyPage() {
   return (

@@ -47,8 +47,8 @@ Data flow: UI edit → `BoardStore` (400 ms debounce) → `casualtyRepo` (one De
 6. A failure the user can't see is a bug. Show it in the save banner or the sync status, and never swallow it.
 
 ## Fragile areas (read the code and tests before touching)
-1. Time anchoring: `apps/client/src/lib/forms/time.ts`, `lib/board/card-stamp.ts` (paper date/time → ISO), `lib/board/rows.ts`, `board/tourniquet-panel`, `board/stamp-field`. Keystroke-level parsing (P0-001).
-2. `BoardStore` hydrate state machine and `commitBoard`'s "delete what is not in the draft" (`apps/client/src/lib/board/store.ts`, `lib/board/commit.ts`).
+1. Time anchoring: `apps/client/src/lib/forms/time.ts`, `lib/board/card-stamp.ts` (paper date/time → ISO), `lib/board/rows.ts`, `casualty-board/components/block-injury/components/tourniquet-panel`, `casualty-board/components/stamp-field`. Keystroke-level parsing (P0-001).
+2. `BoardStore` hydrate state machine, and `commitBoard` writing only the recorded edits (fields, row columns, row drafts; deletes only explicit removals) with clash holding (P1-003) (`apps/client/src/lib/board/store/board-store.ts`, `lib/board/commit.ts`, `lib/board/pending.ts`).
 3. Outbox rewriters: `coalesceOutbox`, `commitRebase`, `queuedAfterDecision`, together with `rebaseCard`'s newer-local-clock-wins rule (`lib/sync/*`).
 4. `nextChangeSeq` (`apps/server/src/prisma/change-seq.ts`) must be the last statement before every card write. Nothing else may set `changeSeq`.
 5. Strict pull parsing combined with long-lived cached PWAs (`lib/sync/api.ts`, `packages/shared/src/schemas`). See P1-001.

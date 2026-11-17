@@ -23,6 +23,7 @@ const MIGRATED = [
   "components/shared/figure-mark",
   "components/shared/missing-card",
   "components/pages/casualty-card",
+  "components/pages/casualty-board",
 ];
 
 const CATEGORIES = new Set(["layout", "pages", "shared", "ui"]);
