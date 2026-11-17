@@ -1,6 +1,6 @@
+/* eslint-disable max-lines -- BoardStore god class, split tracked in P2-023 (CODE_REVIEW.md) */
 "use client";
 
-import { createContext, createElement, useContext, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import {
   Limb,
   compareHlc,
@@ -11,14 +11,14 @@ import {
   type CardPatch,
   type MechanismOfInjury,
 } from "@tccc/shared";
-import { casualtyRepo, db, getResponderProfile, type CasualtyRepo, type LocalCasualtyCard } from "@/lib/db";
-import { cleanCardPatch, normalizeText, type CleanPatch } from "@/lib/forms/card-patch";
-import { reportInvalidFields, reportSaveFailed, reportSaved, setSaveRetry } from "@/lib/forms/save-status";
+import { db, getResponderProfile, type CasualtyRepo, type LocalCasualtyCard } from "@/lib/db";
+import { cleanCardPatch, type CleanPatch } from "@/lib/forms/card-patch";
+import { reportSaveFailed } from "@/lib/forms/save-status";
 import { isUnfinishedTime } from "@/lib/forms/time";
 import { responderPatch } from "@/lib/forms/values";
 import { networkNowIso } from "@/lib/network-clock";
 import { layoutPaper, pinPaperRow, reconcileTreatments, regionAt, unpinPaperRow } from "@tccc/dd1380";
-import { commitBoard } from "./commit";
+import { commitBoard } from "../commit";
 import {
   copyPendingRows,
   DRAFT_KEY,
@@ -36,16 +36,17 @@ import {
   type AnyBoardRow,
   type Clash,
   type PendingRows,
-} from "./pending";
+} from "../pending";
 import {
-  EMPTY_SNAPSHOT,
   emptySnapshot,
   snapshotFromCard,
   type BoardSlice,
   type BoardSnapshot,
   type BoardTreatments,
   type TreatmentListKey,
-} from "./snapshot";
+} from "../snapshot";
+import { clamp, hasDraftContent, keepTyped, limbForRegion, sameJson, sliceOfField, upsertById } from "./helpers";
+import { publishInvalidFields } from "./live";
 
 export type { BoardSlice, BoardSnapshot };
 
@@ -798,288 +799,4 @@ export class BoardStore {
     };
     return existing ? tourniquets.map((item) => (item.limb === limb ? row : item)) : [...tourniquets, row];
   }
-}
-
-function sameJson(a: unknown, b: unknown): boolean {
-  return a === b || JSON.stringify(a) === JSON.stringify(b);
-}
-
-/** True when the shown value saves as `stored` once normalized like a save (`cleanCardPatch`). */
-function savesAs(shown: unknown, stored: unknown): boolean {
-  return sameJson(shown, stored) || sameJson(normalizeText(shown), stored);
-}
-
-/**
- * The stored value, except that shown text which saves as it is kept as typed. A section object
- * is merged field by field; when every field is kept, the shown object itself is returned.
- */
-function keepTyped<T>(shown: T, stored: T): T {
-  if (!isRecord(shown) || !isRecord(stored)) return savesAs(shown, stored) ? shown : stored;
-  let keptAll = true;
-  const merged: Record<string, unknown> = { ...stored };
-  for (const key of Object.keys(stored)) {
-    if (savesAs(shown[key], stored[key])) merged[key] = shown[key];
-    else keptAll = false;
-  }
-  return keptAll ? shown : (merged as T);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function upsertById<T extends { id: string }>(rows: readonly T[], row: T): T[] {
-  return rows.some((item) => item.id === row.id) ? rows.map((item) => (item.id === row.id ? row : item)) : [...rows, row];
-}
-
-/** The section of a card field, or of a `rowDrafts:<row id>` key. */
-function sliceOfField(field: string): BoardSlice {
-  if (field === "rowDrafts" || field.startsWith(DRAFT_KEY)) return "drafts";
-  if (field in EMPTY_SNAPSHOT.identity) return "identity";
-  if (field in EMPTY_SNAPSHOT.mechanism) return "mechanism";
-  if (field in EMPTY_SNAPSHOT.treatments) return "treatments";
-  if (field in EMPTY_SNAPSHOT.responder) return "responder";
-  return "notes";
-}
-
-function hasDraftContent(draft: BoardSnapshot): boolean {
-  const { identity, mechanism, treatments, responder } = draft;
-  const text = [
-    identity.lastName,
-    identity.firstName,
-    identity.allergies,
-    identity.battleRosterNumber,
-    identity.casualtyLast4,
-    identity.service,
-    identity.unit,
-    mechanism.mechanismOther,
-    draft.notes,
-    treatments.hypothermiaType,
-    treatments.dressingOtherType,
-    treatments.circulationTqType,
-    treatments.circulationDressingType,
-    treatments.airwayType,
-    treatments.breathingType,
-    responder.responderName,
-    responder.responderLast4,
-  ].some((value) => Boolean(value?.trim()));
-  return (
-    text ||
-    identity.gender != null ||
-    identity.evacPriority != null ||
-    identity.injuredAt != null ||
-    mechanism.mechanisms.length > 0 ||
-    draft.injuries.length > 0 ||
-    draft.tourniquets.length > 0 ||
-    draft.vitals.length > 0 ||
-    draft.fluids.length > 0 ||
-    draft.medications.length > 0 ||
-    treatments.circulation.length > 0 ||
-    treatments.airway.length > 0 ||
-    treatments.breathing.length > 0 ||
-    treatments.otherTreatments.length > 0 ||
-    treatments.tqExtremity ||
-    treatments.tqJunctional ||
-    treatments.tqTruncal ||
-    treatments.combatPillPack ||
-    treatments.eyeShieldRight ||
-    treatments.eyeShieldLeft
-  );
-}
-
-function clamp(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
-
-export function limbForRegion(region: BodyRegion): Limb | null {
-  if (region === "RIGHT_ARM") return Limb.RIGHT_ARM;
-  if (region === "LEFT_ARM") return Limb.LEFT_ARM;
-  if (region === "RIGHT_LEG") return Limb.RIGHT_LEG;
-  if (region === "LEFT_LEG") return Limb.LEFT_LEG;
-  return null;
-}
-
-// ── Registry ─────────────────────────────────────────────────────────────────
-
-/** One store per card id. A card opened again while its store is alive gets the same store. */
-const byCard = new Map<string, BoardStore>();
-/** Every store that may hold unsaved edits, including a new casualty's draft before its card exists. */
-const live = new Set<BoardStore>();
-/** A store created during a render that never mounts is dropped after this long. */
-const UNMOUNTED_GRACE_MS = 5_000;
-
-const appDeps: BoardDeps = {
-  repo: casualtyRepo,
-  onCreated(store, cardId) {
-    if (!byCard.has(cardId)) byCard.set(cardId, store);
-  },
-  onSettled(store) {
-    publishSaveStatus();
-    collect(store);
-  },
-};
-
-setSaveRetry("board", () => {
-  void flushAllBoards();
-});
-
-/** The save banner shows every live store: a failure on any card stays visible until it is saved. */
-function publishSaveStatus(): void {
-  publishInvalidFields();
-  if (![...live].some((store) => store.failed)) reportSaved("board");
-}
-
-/** The banner's invalid list, re-derived on every store change. `reportInvalidFields` ignores an unchanged list. */
-function publishInvalidFields(): void {
-  reportInvalidFields("board", [...new Set([...live].flatMap((store) => store.reportedInvalid()))]);
-}
-
-function collect(store: BoardStore): void {
-  if (store.refs > 0 || !store.isSettled()) return;
-  live.delete(store);
-  if (store.cardId && byCard.get(store.cardId) === store) byCard.delete(store.cardId);
-  if (store.reportedInvalid().length > 0) {
-    // Its inputs are gone with the screen; an invalid value it held can no longer be fixed there.
-    store.invalid = [];
-    store.forgetTimeBoxes();
-    publishSaveStatus();
-  }
-}
-
-/** The store of `card`, created from it on first use. Safe to call during render. */
-export function boardForCard(card: LocalCasualtyCard): BoardStore {
-  const existing = byCard.get(card.id);
-  if (existing) return existing;
-  const store = new BoardStore(appDeps, card);
-  byCard.set(card.id, store);
-  live.add(store);
-  setTimeout(() => collect(store), UNMOUNTED_GRACE_MS);
-  return store;
-}
-
-export function peekBoard(cardId: string): BoardStore | undefined {
-  return byCard.get(cardId);
-}
-
-/** A store for a new casualty. It joins the registry when it is mounted or creates its card. */
-export function createDraftBoard(): BoardStore {
-  return new BoardStore(appDeps, null);
-}
-
-export function retainBoard(store: BoardStore): void {
-  store.refs += 1;
-  live.add(store);
-  const id = store.cardId;
-  if (id && !byCard.has(id)) byCard.set(id, store);
-  // A reopened card may hold an unfinished time typed earlier or on another device.
-  publishInvalidFields();
-}
-
-/** The last screen left: pending edits are saved, then the store is dropped once its saves settle. */
-export function releaseBoard(store: BoardStore): void {
-  store.refs = Math.max(0, store.refs - 1);
-  if (store.refs > 0) return;
-  void store.flush();
-  collect(store);
-}
-
-export function flushAllBoards(): Promise<boolean> {
-  return Promise.all([...live].map((store) => store.flush())).then((results) => results.every(Boolean));
-}
-
-/** For tests: the stores still held by the registry. */
-export function liveBoards(): ReadonlySet<BoardStore> {
-  return live;
-}
-
-// ── React bindings ───────────────────────────────────────────────────────────
-
-const BoardContext = createContext<BoardStore | null>(null);
-
-export function BoardProvider({ store, children }: { store: BoardStore; children: ReactNode }) {
-  return createElement(BoardContext.Provider, { value: store }, children);
-}
-
-export function useBoard(): BoardStore {
-  const store = useContext(BoardContext);
-  if (!store) throw new Error("Board components must render inside BoardProvider");
-  return store;
-}
-
-/** Keeps `store` alive while the calling screen is mounted. */
-export function useRetainBoard(store: BoardStore | null | undefined): void {
-  useEffect(() => {
-    if (!store) return;
-    retainBoard(store);
-    return () => releaseBoard(store);
-  }, [store]);
-}
-
-/**
- * Saves pending edits of every card when the page is hidden or unloaded. A
- * backgrounded PWA can be killed by the OS without further events, so a pending
- * debounce would be lost.
- */
-export function useFlushBoardOnHide(): void {
-  useEffect(() => {
-    const flush = () => {
-      void flushAllBoards();
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("pagehide", flush);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("pagehide", flush);
-    };
-  }, []);
-}
-
-/**
- * A part of the snapshot. `select` must return a value already in the snapshot (a
- * slice, a row, a primitive), never a new object or array, or React re-renders forever.
- */
-export function useSlice<T>(select: (state: BoardSnapshot) => T): T {
-  const store = useBoard();
-  return useSyncExternalStore(
-    store.subscribe,
-    () => select(store.getSnapshot()),
-    () => select(EMPTY_SNAPSHOT),
-  );
-}
-
-/**
- * A row time box's flag (vitals, fluid or medication), derived from the row's draft text.
- * Call `focus(id)` when the box gains focus or its row is created, and `focus(null)` on blur:
- * the box is flagged only once it is left. `id` is undefined while the box has no row yet.
- */
-export function useRowTimeBox(id: string | undefined): { unfinished: boolean; focus: (id: string | null | undefined) => void } {
-  const store = useBoard();
-  const unfinished = useSyncExternalStore(
-    store.subscribe,
-    () => (id ? store.isTimeBoxUnfinished(id) : false),
-    () => false,
-  );
-  return { unfinished, focus: (next) => store.focusTimeBox(next ?? null) };
-}
-
-/**
- * The flag of a time box whose text is not stored (the tourniquet time). `check(text)` on
- * blur flags text that is not a complete time; `check(text, true)` while typing only clears it.
- */
-export function useTimeBox(key: string | undefined, slice: TimeBoxSlice): { unfinished: boolean; check: (text: string, typing?: boolean) => void } {
-  const store = useBoard();
-  const unfinished = useSyncExternalStore(
-    store.subscribe,
-    () => (key ? store.isTimeBoxUnfinished(key) : false),
-    () => false,
-  );
-  return {
-    unfinished,
-    check: (text, typing = false) => {
-      if (key) store.checkTimeBox(key, slice, text, typing);
-    },
-  };
 }
