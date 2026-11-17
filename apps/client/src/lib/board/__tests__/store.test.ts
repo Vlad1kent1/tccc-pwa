@@ -16,6 +16,7 @@ import { paperRow, rowForColumn, saveVitalSlot } from "../rows";
 import { createCasualtyRepo, type CasualtyRepo } from "@/lib/db/casualtyRepo";
 import { TcccDB } from "@/lib/db/schema";
 import { commitBoard } from "../commit";
+import { emptyPendingRows } from "../pending";
 import {
   boardForCard,
   createDraftBoard,
@@ -696,13 +697,339 @@ function draftVital(pulseRate: number) {
   return { ...vitalInput(pulseRate), id: newId(), clientUpdatedAt: "", deletedAt: null };
 }
 
+describe("remote updates while the board has unsaved edits (P1-003)", () => {
+  async function openWith(pulses: number[]) {
+    const card = await casualtyRepo.create({ lastName: "Remote" });
+    const rows = [];
+    for (const pulse of pulses) rows.push(await casualtyRepo.upsertChild(card.id, "vitalSigns", vitalInput(pulse)));
+    const board = await open((await casualtyRepo.getById(card.id))!);
+    return { id: card.id, board, rows };
+  }
+
+  /** Another device's edit, as a pull lands it in Dexie. */
+  async function pulled(id: string) {
+    return (await casualtyRepo.getById(id))!;
+  }
+
+  async function storedPulses(id: string) {
+    return (await pulled(id)).vitalSigns
+      .filter((row) => row.deletedAt == null)
+      .map((row) => row.pulseRate)
+      .sort((a, b) => a! - b!);
+  }
+
+  function shownPulses(board: BoardStore) {
+    return board
+      .getSnapshot()
+      .vitals.map((row) => row.pulseRate)
+      .sort((a, b) => a! - b!);
+  }
+
+  it("does not delete a row another device added to the section being edited", async () => {
+    const { id, board } = await openWith([60]);
+    // The save runs before the board has seen the pulled row.
+    board.upsertVital(draftVital(70));
+    await casualtyRepo.upsertChild(id, "vitalSigns", vitalInput(80));
+    expect(await board.flush()).toBe(true);
+    expect(await storedPulses(id)).toEqual([60, 70, 80]);
+
+    // The board sees the pulled row while its own row is still unsaved.
+    board.upsertVital(draftVital(90));
+    await casualtyRepo.upsertChild(id, "vitalSigns", vitalInput(100));
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().remote).toBe(false);
+    expect(shownPulses(board)).toEqual([60, 70, 80, 90, 100]);
+    expect(await board.flush()).toBe(true);
+    expect(await storedPulses(id)).toEqual([60, 70, 80, 90, 100]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("does not revert another device's edit to a different row", async () => {
+    const { id, board, rows } = await openWith([60, 70]);
+    const [first, second] = rows as [LocalCasualtyCard["vitalSigns"][number], LocalCasualtyCard["vitalSigns"][number]];
+    board.upsertVital({ ...first, pulseRate: 61 });
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(71), id: second.id });
+    expect(await board.flush()).toBe(true);
+    expect(await storedPulses(id)).toEqual([61, 71]);
+
+    board.upsertVital({ ...first, pulseRate: 62 });
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(72), id: second.id });
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().remote).toBe(false);
+    expect(shownPulses(board)).toEqual([62, 72]);
+    expect(await board.flush()).toBe(true);
+    expect(await storedPulses(id)).toEqual([62, 72]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("still deletes a row or tourniquet the medic removed", async () => {
+    const { id, board, rows } = await openWith([60]);
+    board.setLimbTourniquet(Limb.RIGHT_ARM, "CAT");
+    expect(await board.flush()).toBe(true);
+    await casualtyRepo.upsertChild(id, "vitalSigns", vitalInput(80));
+    board.removeVital(rows[0]!.id);
+    board.removeTourniquet(Limb.RIGHT_ARM);
+    expect(await board.flush()).toBe(true);
+    expect(await storedPulses(id)).toEqual([80]);
+    expect(activeTourniquets(await pulled(id))).toEqual([]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("keeps the banner for an edit to the same field until the medic loads the update", async () => {
+    const { id, board } = await openWith([]);
+    board.editIdentity({ firstName: "Local" });
+    await casualtyRepo.updateFields(id, { firstName: "Remote" });
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().remote).toBe(true);
+    expect(board.getSnapshot().identity.firstName).toBe("Local");
+
+    // The later local edit is saved over it (newer clock wins); the banner stays until a choice.
+    expect(await board.flush()).toBe(true);
+    expect((await pulled(id)).firstName).toBe("Local");
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().remote).toBe(true);
+
+    board.loadUpdate();
+    expect(board.getSnapshot().remote).toBe(false);
+    expect(board.getSnapshot().identity.firstName).toBe("Remote");
+    expect(await board.flush()).toBe(true);
+    expect((await pulled(id)).firstName).toBe("Remote");
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("keeps the local edit when the medic keeps their edits", async () => {
+    const { id, board } = await openWith([]);
+    board.editIdentity({ firstName: "Local" });
+    await casualtyRepo.updateFields(id, { firstName: "Remote" });
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().remote).toBe(true);
+    board.keepEdits();
+    expect(board.getSnapshot().remote).toBe(false);
+    expect(await board.flush()).toBe(true);
+    expect((await pulled(id)).firstName).toBe("Local");
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("holds a clinical row edited on both devices until the medic chooses, even when the save finds it first", async () => {
+    clearSaveStatus("board");
+    const { id, board, rows } = await openWith([60]);
+    const row = rows[0]!;
+    board.upsertVital({ ...row, pulseRate: 61 });
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(65), id: row.id });
+    expect(await board.flush()).toBe(true);
+    // Not written (shared conflict policy): the other value stays stored, the medic's stays on screen.
+    expect(board.getSnapshot().remote).toBe(true);
+    expect(await storedPulses(id)).toEqual([65]);
+    expect(shownPulses(board)).toEqual([61]);
+    expect(getSaveStatus().board.invalid).toEqual(["vitals"]);
+
+    board.loadUpdate();
+    expect(await board.flush()).toBe(true);
+    expect(await storedPulses(id)).toEqual([65]);
+    expect(shownPulses(board)).toEqual([65]);
+    expect(board.getSnapshot().remote).toBe(false);
+    expect(getSaveStatus().board.invalid).toEqual([]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("saves a held clinical row when the medic keeps their edits", async () => {
+    const { id, board, rows } = await openWith([60]);
+    const row = rows[0]!;
+    board.upsertVital({ ...row, pulseRate: 61 });
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(65), id: row.id });
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().remote).toBe(true);
+    expect(await board.flush()).toBe(true);
+    expect(await storedPulses(id)).toEqual([65]);
+
+    board.keepEdits();
+    expect(await board.flush()).toBe(true);
+    expect(await storedPulses(id)).toEqual([61]);
+    expect(board.getSnapshot().remote).toBe(false);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("merges a row edited on both devices in different columns (type here, time there)", async () => {
+    const { id, board } = await openWith([]);
+    board.setLimbTourniquet(Limb.RIGHT_ARM, "CAT", new Date(2026, 9, 1, 10, 5).toISOString());
+    expect(await board.flush()).toBe(true);
+    const corrected = new Date(2026, 9, 1, 9, 55).toISOString();
+
+    // The save runs first, then the board sees the other device's time correction.
+    board.setLimbTourniquet(Limb.RIGHT_ARM, "SOFTT-W");
+    await casualtyRepo.upsertChild(id, "tourniquet", { limb: Limb.RIGHT_ARM, type: "CAT", appliedAt: corrected });
+    expect(await board.flush()).toBe(true);
+    expect(activeTourniquets(await pulled(id))).toEqual([expect.objectContaining({ type: "SOFTT-W", appliedAt: corrected })]);
+    expect(board.getSnapshot().remote).toBe(false);
+
+    // The board sees the correction first, while its own type edit is unsaved.
+    const later = new Date(2026, 9, 1, 9, 50).toISOString();
+    board.setLimbTourniquet(Limb.RIGHT_ARM, "SAM-XT");
+    await casualtyRepo.upsertChild(id, "tourniquet", { limb: Limb.RIGHT_ARM, type: "SOFTT-W", appliedAt: later });
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().remote).toBe(false);
+    expect(board.getSnapshot().tourniquets).toEqual([expect.objectContaining({ type: "SAM-XT", appliedAt: later })]);
+    expect(await board.flush()).toBe(true);
+    expect(activeTourniquets(await pulled(id))).toEqual([expect.objectContaining({ type: "SAM-XT", appliedAt: later })]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("holds an allergy edited on both devices and lists it as not saved", async () => {
+    clearSaveStatus("board");
+    const { id, board } = await openWith([]);
+    board.editIdentity({ allergies: "PENICILLIN", firstName: "Ivan" });
+    await casualtyRepo.updateFields(id, { allergies: "NKDA" });
+    expect(await board.flush()).toBe(true);
+    const card = await pulled(id);
+    expect(card.allergies).toBe("NKDA");
+    expect(card.firstName).toBe("Ivan");
+    expect(board.getSnapshot().remote).toBe(true);
+    expect(getSaveStatus().board.invalid).toEqual(["allergies"]);
+
+    board.keepEdits();
+    expect(await board.flush()).toBe(true);
+    expect((await pulled(id)).allergies).toBe("PENICILLIN");
+    expect(getSaveStatus().board.invalid).toEqual([]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("loads the newest version when the other device changes a clashing value again", async () => {
+    const { id, board, rows } = await openWith([60]);
+    const row = rows[0]!;
+    board.upsertVital({ ...row, pulseRate: 61 });
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(65), id: row.id });
+    board.hydrate(await pulled(id));
+    await board.flush();
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(66), id: row.id });
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().remote).toBe(true);
+    board.loadUpdate();
+    expect(await board.flush()).toBe(true);
+    expect(await storedPulses(id)).toEqual([66]);
+
+    // A saved field the other device then replaces again: its newer value shows, and the clash is over.
+    board.editIdentity({ firstName: "Local" });
+    await casualtyRepo.updateFields(id, { firstName: "Remote" });
+    board.hydrate(await pulled(id));
+    await board.flush();
+    expect((await pulled(id)).firstName).toBe("Local");
+    await casualtyRepo.updateFields(id, { firstName: "Remote2" });
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().identity.firstName).toBe("Remote2");
+    expect(board.getSnapshot().remote).toBe(false);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("keeps another device's row drafts next to the unsaved ones", async () => {
+    const { id, board, rows } = await openWith([60, 70]);
+    const [first, second] = rows as [LocalCasualtyCard["vitalSigns"][number], LocalCasualtyCard["vitalSigns"][number]];
+    board.editRowDrafts({ [first.id]: { time: "09" } });
+    await casualtyRepo.updateFields(id, { rowDrafts: { [second.id]: { time: "14" } } });
+    expect(await board.flush()).toBe(true);
+    expect((await pulled(id)).rowDrafts).toEqual({ [first.id]: { time: "09" }, [second.id]: { time: "14" } });
+
+    board.editRowDrafts({ ...board.getSnapshot().rowDrafts, [first.id]: { time: "090" } });
+    await casualtyRepo.updateFields(id, { rowDrafts: { [first.id]: { time: "09" }, [second.id]: { time: "145" } } });
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().rowDrafts).toEqual({ [first.id]: { time: "090" }, [second.id]: { time: "145" } });
+    expect(await board.flush()).toBe(true);
+    expect((await pulled(id)).rowDrafts).toEqual({ [first.id]: { time: "090" }, [second.id]: { time: "145" } });
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("does not write a held row from a save queued before the clash was found", async () => {
+    const { id, board, rows } = await openWith([60, 70]);
+    const [row, other] = rows as [LocalCasualtyCard["vitalSigns"][number], LocalCasualtyCard["vitalSigns"][number]];
+    board.upsertVital({ ...row, pulseRate: 61 });
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(65), id: row.id });
+    const first = board.flush();
+    // Another instant edit while the first save runs queues a second save, built before the clash is known.
+    board.removeVital(other.id);
+    await first;
+    await board.flush();
+    expect(await storedPulses(id)).toEqual([65]);
+    expect(board.getSnapshot().remote).toBe(true);
+    expect(shownPulses(board)).toEqual([61]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("ends a held clash when a save finds the other device now agrees", async () => {
+    const { id, board, rows } = await openWith([60]);
+    const row = rows[0]!;
+    board.upsertVital({ ...row, pulseRate: 61 });
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(65), id: row.id });
+    board.hydrate(await pulled(id));
+    expect(board.getSnapshot().remote).toBe(true);
+
+    // Without a hydrate, the other device changes its value to the medic's while a save of another section runs.
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(61), id: row.id });
+    board.editNotes("pulse checked");
+    expect(await board.flush()).toBe(true);
+    expect(board.getSnapshot().remote).toBe(false);
+    board.loadUpdate();
+    await board.flush();
+    expect(await storedPulses(id)).toEqual([61]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("shows another device's change to an unedited column once the save finds it", async () => {
+    const { id, board, rows } = await openWith([60]);
+    const row = rows[0]!;
+    board.upsertVital({ ...row, pulseRate: 61 });
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(60), spo2: 91, id: row.id });
+    expect(await board.flush()).toBe(true);
+    // The board has not seen the pulled card yet; it must not keep showing the old SpO2.
+    expect(board.getSnapshot().vitals).toEqual([expect.objectContaining({ pulseRate: 61, spo2: 91 })]);
+    expect(board.getSnapshot().remote).toBe(false);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("keeps the store of a closed card while a held edit waits for a choice", async () => {
+    const { id, board, rows } = await openWith([60]);
+    board.upsertVital({ ...rows[0]!, pulseRate: 61 });
+    await casualtyRepo.upsertChild(id, "vitalSigns", { ...vitalInput(65), id: rows[0]!.id });
+    await board.flush();
+    mounted = mounted.filter((store) => store !== board);
+    releaseBoard(board);
+    await flushAllBoards();
+    expect(liveBoards().has(board)).toBe(true);
+    expect(boardForCard(await pulled(id))).toBe(board);
+    board.keepEdits();
+    await board.flush();
+    expect(await storedPulses(id)).toEqual([61]);
+    await casualtyRepo.softDelete(id);
+  });
+
+  it("does not resend saved fields while another field is held (P1-003 b)", async () => {
+    const { id, board } = await openWith([]);
+    board.editIdentity({ lastName: "Local", casualtyLast4: "12" });
+    board.editNotes("local note");
+    await board.flush();
+    expect((await pulled(id)).lastName).toBe("Local");
+    expect((await pulled(id)).notes).toBe("local note");
+
+    await casualtyRepo.updateFields(id, { lastName: "Remote", notes: "remote note" });
+    board.editIdentity({ casualtyLast4: "123" });
+    await board.flush();
+    const card = await pulled(id);
+    expect(card.lastName).toBe("Remote");
+    expect(card.notes).toBe("remote note");
+    board.hydrate(card);
+    expect(board.getSnapshot().identity.lastName).toBe("Remote");
+    expect(board.getSnapshot().notes).toBe("remote note");
+    expect(board.getSnapshot().identity.casualtyLast4).toBe("123");
+    await casualtyRepo.softDelete(id);
+  });
+});
+
 describe("commitBoard", () => {
   it("rolls back a stale field write", async () => {
     const card = await repo.create({ lastName: "Adler" });
     let checks = 0;
     const draftSnapshot = emptySnapshot(card.id);
     draftSnapshot.identity = { ...draftSnapshot.identity, lastName: "Berg" };
-    const outcome = await commitBoard(repo, card.id, draftSnapshot, new Set(["identity"]), { lastName: "Berg" }, () => ++checks <= 2);
+    const edits = { patch: { lastName: "Berg" }, rows: emptyPendingRows(), drafts: new Set<string>() };
+    const outcome = await commitBoard(repo, card.id, draftSnapshot, new Set(["identity"]), edits, null, null, () => ++checks <= 2);
     expect(outcome.status).toBe("aborted");
     expect((await repo.getById(card.id))?.lastName).toBe("Adler");
   });
@@ -722,7 +1049,10 @@ describe("commitBoard", () => {
     });
     const draftSnapshot = emptySnapshot(card.id);
     draftSnapshot.vitals = [{ ...vital, pulseRate: 111 }];
-    const outcome = await commitBoard(repo, card.id, draftSnapshot, new Set(["vitals"]), {}, () => true);
+    const pending = emptyPendingRows();
+    pending.vitals.changed.set(vital.id, new Set(["pulseRate"]));
+    const edits = { patch: {}, rows: pending, drafts: new Set<string>() };
+    const outcome = await commitBoard(repo, card.id, draftSnapshot, new Set(["vitals"]), edits, null, null, () => true);
     expect(outcome.status).toBe("saved");
     const fresh = await repo.getById(card.id);
     const rows = fresh!.vitalSigns.filter((row) => row.deletedAt == null);

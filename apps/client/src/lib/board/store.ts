@@ -20,6 +20,24 @@ import { networkNowIso } from "@/lib/network-clock";
 import { layoutPaper, pinPaperRow, reconcileTreatments, regionAt, unpinPaperRow } from "@tccc/dd1380";
 import { commitBoard } from "./commit";
 import {
+  copyPendingRows,
+  DRAFT_KEY,
+  emptyPendingRows,
+  findClash,
+  isHeldField,
+  mergeClash,
+  rebaseRows,
+  recordRowEdits,
+  refreshClash,
+  ROW_KINDS,
+  ROW_SLICE,
+  sameValue,
+  takeRemote,
+  type AnyBoardRow,
+  type Clash,
+  type PendingRows,
+} from "./pending";
+import {
   EMPTY_SNAPSHOT,
   emptySnapshot,
   snapshotFromCard,
@@ -45,6 +63,12 @@ interface SaveJob {
   draft: BoardSnapshot;
   slices: Set<BoardSlice>;
   patch: CardPatch;
+  /** The child rows changed or removed, as recorded when the job was queued, without held ones. */
+  rows: PendingRows;
+  /** Row ids whose `rowDrafts` entry this job saves. */
+  drafts: Set<string>;
+  /** Clashing fields left out of `patch` until the medic chooses (shared conflict policy). */
+  held: CardField[];
   /** Dirty fields left out of `patch` because their value is invalid. */
   invalid: CardField[];
   /** Dirty fields left out of `patch` because they are still being typed (a partial last 4). */
@@ -73,15 +97,19 @@ export class BoardStore {
   private readonly listeners = new Set<() => void>();
   private readonly idListeners = new Set<(id: string) => void>();
   private readonly dirty = new Set<BoardSlice>();
+  /** Card fields edited and not yet saved. A save removes the ones it stored (P1-003). */
   private readonly dirtyKeys = new Set<string>();
+  /** Child rows edited or removed and not yet saved: a save writes only these (P1-003). */
+  private readonly pendingRows = emptyPendingRows();
+  /** The stored card the unsaved edits were made on, to tell another device's changes from them. */
+  private base: BoardSnapshot;
+  /** Unsaved edits another device changed too, until the medic keeps theirs or loads the update. */
+  private clash: Clash | null = null;
   private readonly jobs: SaveJob[] = [];
   private epoch = 0;
   private saving = false;
   /** `clientUpdatedAt` of the card as this store last wrote or adopted it. */
   private acked = "";
-  /** A remote version the medic chose to keep their edits over. */
-  private heldAt: string | null = null;
-  private incoming: LocalCasualtyCard | null = null;
   private queuedCard: LocalCasualtyCard | null = null;
   private creating: Promise<LocalCasualtyCard> | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -107,6 +135,7 @@ export class BoardStore {
     card: LocalCasualtyCard | null,
   ) {
     this.snapshot = card ? snapshotFromCard(card) : emptySnapshot(null);
+    this.base = this.snapshot;
     this.acked = card?.clientUpdatedAt ?? "";
   }
 
@@ -126,9 +155,14 @@ export class BoardStore {
     return () => this.idListeners.delete(listener);
   };
 
-  /** No timer, no queued or running save, no card being created, and the last save did not fail. */
+  /**
+   * No timer, no queued or running save, no card being created, the last save did not fail, and
+   * no clashing edit waits for the medic's choice (it lives only in this store until then).
+   */
   isSettled(): boolean {
-    return this.timer === undefined && this.jobs.length === 0 && !this.drainPromise && !this.creating && !this.failed;
+    return (
+      this.timer === undefined && this.jobs.length === 0 && !this.drainPromise && !this.creating && !this.failed && this.heldNames().length === 0
+    );
   }
 
   private emit(): void {
@@ -136,10 +170,29 @@ export class BoardStore {
     publishInvalidFields();
   }
 
-  /** What the save banner lists for this store: invalid fields, skipped sections, and sections with an unfinished time box. */
+  /**
+   * What the save banner lists for this store: invalid fields, skipped sections, sections with an
+   * unfinished time box, and clashing edits held until the medic chooses.
+   */
   reportedInvalid(): string[] {
     const rowTimes = Object.keys(this.snapshot.rowDrafts).map((id) => this.unfinishedRowTime(id));
-    return [...new Set([...this.invalid, ...this.unfinishedTimes.values(), ...rowTimes.filter((slice) => slice != null)])];
+    return [...new Set([...this.invalid, ...this.unfinishedTimes.values(), ...rowTimes.filter((slice) => slice != null), ...this.heldNames()])];
+  }
+
+  /** Held clashing edits, as the save banner names them: a held field, or the section of a held row. */
+  private heldNames(): string[] {
+    const clash = this.clash;
+    if (!clash) return [];
+    const fields = [...clash.fields.keys()].filter(isHeldField);
+    return [...fields, ...ROW_KINDS.filter((kind) => clash.rows[kind].size > 0).map((kind) => ROW_SLICE[kind])];
+  }
+
+  /** The sections of held clashing edits; they stay unsaved until the medic chooses. */
+  private heldSlices(): BoardSlice[] {
+    const clash = this.clash;
+    if (!clash) return [];
+    const fields = [...clash.fields.keys()].filter(isHeldField).map(sliceOfField);
+    return [...fields, ...ROW_KINDS.filter((kind) => clash.rows[kind].size > 0).map((kind) => ROW_SLICE[kind])];
   }
 
   /**
@@ -199,83 +252,112 @@ export class BoardStore {
     this.applyHydrate(card);
   };
 
+  /**
+   * Adopts a newer stored card under the unsaved edits, which stay on screen and are saved over it
+   * (P1-003). Unsaved edits it changed too raise the remote banner until the medic chooses.
+   */
   private applyHydrate(card: LocalCasualtyCard): void {
     if (this.acked && compareHlc(card.clientUpdatedAt, this.acked) < 0) return;
-    if (card.clientUpdatedAt === this.heldAt) return;
-    if (card.clientUpdatedAt === this.acked || this.dirty.size === 0) {
-      this.acked = card.clientUpdatedAt;
-      this.heldAt = null;
-      this.incoming = null;
-      this.snapshot = this.mergeUndirty(card);
-      this.emit();
-      return;
-    }
-    this.incoming = card;
-    if (!this.snapshot.remote) {
-      this.snapshot = { ...this.snapshot, remote: true };
-      this.emit();
-    }
+    const next = snapshotFromCard(card);
+    if (this.clash) this.clash = refreshClash(this.clash, this.base, next, this.snapshot, this.dirtyKeys);
+    this.noteClash(findClash(this.dirtyKeys, this.pendingRows, this.base, next, this.snapshot));
+    this.acked = card.clientUpdatedAt;
+    this.base = next;
+    this.snapshot = this.rebase(next);
+    this.emit();
   }
 
-  private mergeUndirty(card: LocalCasualtyCard): BoardSnapshot {
+  private noteClash(clash: Clash | null): void {
+    this.clash = mergeClash(this.clash, clash);
+  }
+
+  /** The stored card with the unsaved field and row edits on top. */
+  private rebase(next: BoardSnapshot): BoardSnapshot {
     const current = this.snapshot;
-    const next = snapshotFromCard(card);
-    // A dirty slice keeps what is on screen. A clean one takes the card's value, but
-    // keeps its old object when nothing in it changed: every save re-reads the card,
-    // and new objects would re-render every block and the injury figures each time.
-    // Text that saves to the stored value (a trailing space or newline the save trimmed)
-    // also stays as typed, so the next keystroke continues it (P1-007).
-    const take = <K extends keyof BoardSnapshot>(key: K, slice: BoardSlice): BoardSnapshot[K] =>
-      this.dirty.has(slice) ? current[key] : keepTyped(current[key], next[key]);
+    // Each value keeps its old object when nothing in it changed: every save re-reads the card,
+    // and new objects would re-render every block and the injury figures each time. Text that
+    // saves to the stored value (a trailing space the save trimmed) stays as typed (P1-007).
+    const section = <K extends "identity" | "mechanism" | "treatments" | "responder">(key: K): BoardSnapshot[K] => {
+      const merged = keepTyped(current[key], next[key]);
+      const mine = Object.keys(next[key]).filter((field) => this.dirtyKeys.has(field));
+      if (mine.length === 0) return merged;
+      const shown = current[key] as Record<string, unknown>;
+      const rebased = { ...merged, ...Object.fromEntries(mine.map((field) => [field, shown[field]])) } as BoardSnapshot[K];
+      return sameJson(rebased, current[key]) ? current[key] : rebased;
+    };
+    const notes = this.dirtyKeys.has("notes") ? current.notes : keepTyped(current.notes, next.notes);
+    // Row drafts merge by row id: another device's drafts stay next to the unsaved ones.
+    const draftIds = [...this.dirtyKeys].filter((key) => key.startsWith(DRAFT_KEY)).map((key) => key.slice(DRAFT_KEY.length));
+    const rowDrafts = (): BoardSnapshot["rowDrafts"] => {
+      if (draftIds.length === 0) return keepTyped(current.rowDrafts, next.rowDrafts);
+      const merged = { ...next.rowDrafts };
+      for (const id of draftIds) {
+        const entry = current.rowDrafts[id];
+        if (entry) merged[id] = entry;
+        else delete merged[id];
+      }
+      return sameJson(merged, current.rowDrafts) ? current.rowDrafts : merged;
+    };
+    const rows = <K extends (typeof ROW_KINDS)[number]>(kind: K): BoardSnapshot[K] => {
+      const rebased = rebaseRows(kind, current[kind] as readonly AnyBoardRow[], next[kind] as readonly AnyBoardRow[], this.pendingRows[kind]);
+      return (sameJson(rebased, current[kind]) ? current[kind] : rebased) as BoardSnapshot[K];
+    };
     const merged: BoardSnapshot = {
       ...next,
-      remote: false,
-      identity: take("identity", "identity"),
-      mechanism: take("mechanism", "mechanism"),
-      injuries: take("injuries", "body"),
-      tourniquets: take("tourniquets", "body"),
-      treatments: take("treatments", "treatments"),
-      vitals: take("vitals", "vitals"),
-      fluids: take("fluids", "fluids"),
-      medications: take("medications", "meds"),
-      notes: take("notes", "notes"),
-      responder: take("responder", "responder"),
-      rowDrafts: take("rowDrafts", "drafts"),
+      remote: this.clash != null,
+      identity: section("identity"),
+      mechanism: section("mechanism"),
+      injuries: rows("injuries"),
+      tourniquets: rows("tourniquets"),
+      treatments: section("treatments"),
+      vitals: rows("vitals"),
+      fluids: rows("fluids"),
+      medications: rows("medications"),
+      notes,
+      responder: section("responder"),
+      rowDrafts: rowDrafts(),
       sheetText: current.sheetText,
     };
     // Columns keep their rows across updates; only `resetPaperLayout` re-sorts them.
     return { ...merged, paper: layoutPaper(merged, current.paper) };
   }
 
+  /** "Keep my edits": the medic's values stay, and held ones are now saved over the other version. */
   keepEdits = (): void => {
-    if (this.incoming) this.heldAt = this.incoming.clientUpdatedAt;
-    this.incoming = null;
+    this.clash = null;
     this.snapshot = { ...this.snapshot, remote: false };
+    // A new epoch, so the next save is a new job that includes the edits held until now.
     this.epoch += 1;
     this.emit();
     void this.flush();
   };
 
+  /** "Load updated card": the other version's values replace the clashing edits, and are saved. */
   loadUpdate = (): void => {
-    const card = this.incoming;
-    if (!card) return;
-    this.dirty.clear();
-    this.dirtyKeys.clear();
-    this.acked = card.clientUpdatedAt;
-    this.heldAt = null;
-    this.incoming = null;
-    this.snapshot = snapshotFromCard(card);
-    this.epoch += 1;
-    this.clearTimer();
-    this.emit();
+    const clash = this.clash;
+    if (!clash) return;
+    this.clash = null;
+    const fields = [...clash.fields.keys()];
+    const slices = new Set<BoardSlice>(fields.map(sliceOfField));
+    for (const kind of ROW_KINDS) if (clash.rows[kind].size > 0) slices.add(ROW_SLICE[kind]);
+    this.apply(slices, { ...takeRemote(this.snapshot, clash), remote: false }, fields, "now");
   };
 
   // ── Edits ────────────────────────────────────────────────────────────────
 
   private touch(slice: BoardSlice, partial: Partial<BoardSnapshot>, keys: readonly string[], when: When): void {
+    this.apply([slice], partial, keys, when);
+  }
+
+  /** Records an edit: its sections, card fields and child rows become unsaved, and a save is scheduled. */
+  private apply(slices: Iterable<BoardSlice>, partial: Partial<BoardSnapshot>, keys: readonly string[], when: When): void {
     this.epoch += 1;
-    this.dirty.add(slice);
+    for (const slice of slices) this.dirty.add(slice);
     for (const key of keys) this.dirtyKeys.add(key);
+    for (const kind of ROW_KINDS) {
+      const rows = partial[kind] as readonly AnyBoardRow[] | undefined;
+      if (rows && rows !== this.snapshot[kind]) recordRowEdits(this.pendingRows[kind], kind, this.snapshot[kind], rows);
+    }
     this.snapshot = { ...this.snapshot, ...partial };
     this.emit();
     this.clearTimer();
@@ -326,9 +408,14 @@ export class BoardStore {
     this.editTreatments({ [key]: next } as Partial<BoardTreatments>);
   };
 
-  /** Unfinished vitals, fluid, and medication cell text. Saved and synced like any card field. */
+  /**
+   * Unfinished vitals, fluid, and medication cell text. Saved and synced like any card field, but
+   * tracked per row id, so a save merges it into the stored drafts of other rows (P1-003).
+   */
   editRowDrafts = (rowDrafts: BoardSnapshot["rowDrafts"]): void => {
-    this.touch("drafts", { rowDrafts }, ["rowDrafts"], "debounce");
+    const before = this.snapshot.rowDrafts;
+    const ids = [...new Set([...Object.keys(before), ...Object.keys(rowDrafts)])].filter((id) => !sameValue(before[id], rowDrafts[id]));
+    this.touch("drafts", { rowDrafts }, ids.map((id) => DRAFT_KEY + id), "debounce");
   };
 
   editNotes = (notes: string): void => {
@@ -519,12 +606,18 @@ export class BoardStore {
    * not saved. A last 4 is saved once all four digits are typed; until then it is
    * pending, so its section stays dirty and the digits stay on screen.
    */
-  private currentPatch(): CleanPatch & { pending: CardField[] } {
+  private currentPatch(): CleanPatch & { pending: CardField[]; drafts: Set<string> } {
     const { identity, mechanism, treatments, notes, responder, rowDrafts } = this.snapshot;
-    const sources: Record<string, unknown> = { ...identity, ...mechanism, ...treatments, notes, ...responder, rowDrafts };
+    const sources: Record<string, unknown> = { ...identity, ...mechanism, ...treatments, notes, ...responder };
     const raw: Record<string, unknown> = {};
     const pending: CardField[] = [];
+    // Edited row drafts, by row id. The patch carries all of them; the save merges these ids into the stored ones.
+    const drafts = new Set<string>();
     for (const key of this.dirtyKeys) {
+      if (key.startsWith(DRAFT_KEY)) {
+        drafts.add(key.slice(DRAFT_KEY.length));
+        continue;
+      }
       const value = sources[key];
       if (value === undefined) continue;
       if (LAST4_FIELDS.has(key) && typeof value === "string" && !/^\d{4}$/.test(value)) {
@@ -533,7 +626,8 @@ export class BoardStore {
       }
       raw[key] = value;
     }
-    return { ...cleanCardPatch(raw), pending };
+    if (drafts.size > 0) raw.rowDrafts = rowDrafts;
+    return { ...cleanCardPatch(raw), pending, drafts };
   }
 
   private enqueueCurrent(forceCreate: boolean): void {
@@ -544,8 +638,12 @@ export class BoardStore {
       existing.forceCreate = existing.forceCreate || forceCreate;
       return;
     }
-    const { patch, invalid, pending } = this.currentPatch();
-    this.jobs.push({ epoch: this.epoch, draft: this.snapshot, slices: new Set(this.dirty), patch, invalid, pending, forceCreate });
+    const { patch, invalid, pending, drafts } = this.currentPatch();
+    // Clashing rows and held fields wait for the medic's choice (shared conflict policy).
+    const held = Object.keys(patch).filter((key) => this.clash?.fields.has(key) && isHeldField(key)) as CardField[];
+    for (const key of held) delete (patch as Record<string, unknown>)[key];
+    const rows = copyPendingRows(this.pendingRows, this.clash?.rows);
+    this.jobs.push({ epoch: this.epoch, draft: this.snapshot, slices: new Set(this.dirty), patch, rows, drafts, held, invalid, pending, forceCreate });
   }
 
   private drain(): Promise<boolean> {
@@ -589,28 +687,37 @@ export class BoardStore {
       if (!id) return true;
       // A job with no dirty slices only creates the card.
       if (job.slices.size > 0) {
-        const outcome = await commitBoard(this.deps.repo, id, job.draft, job.slices, job.patch, () => true);
+        const edits = { patch: job.patch, rows: job.rows, drafts: job.drafts };
+        const outcome = await commitBoard(this.deps.repo, id, job.draft, job.slices, edits, this.base, this.clash, () => true);
         if (outcome.status !== "saved") {
           // With an always-current check, commitBoard aborts only when the card is gone.
           console.warn("Board save skipped: card no longer exists", id);
           return true;
         }
+        // Edits another device changed too: the remote banner stays until the medic chooses (P1-003).
+        // The second check covers edits made after this job was queued, before `base` moves past them.
+        // A known clash follows what the save found stored, before `base` moves past it.
+        if (this.clash) this.clash = refreshClash(this.clash, this.base, outcome.before, this.snapshot, this.dirtyKeys);
+        this.noteClash(outcome.clash);
+        this.noteClash(findClash(this.dirtyKeys, this.pendingRows, this.base, outcome.before, this.snapshot));
+        this.base = outcome.stored;
+        if (compareHlc(outcome.clientUpdatedAt, this.acked) > 0) this.acked = outcome.clientUpdatedAt;
         if (this.epoch === job.epoch) {
-          // A section with a value that could not be stored stays dirty: the input stays
-          // on screen and is retried instead of being replaced by the stored card.
-          const held = new Set<BoardSlice>([...job.invalid, ...job.pending].map(sliceOfField));
+          // A section with a value that could not be stored, or a clashing edit held for the
+          // medic's choice, stays dirty: the input stays on screen and is saved later.
+          const held = new Set<BoardSlice>([...job.invalid, ...job.pending, ...job.held].map(sliceOfField));
+          for (const slice of this.heldSlices()) held.add(slice);
           for (const slice of outcome.skipped) held.add(slice);
-          this.acked = outcome.clientUpdatedAt;
-          this.heldAt = null;
-          this.incoming = null;
           for (const slice of job.slices) {
             if (!held.has(slice)) this.dirty.delete(slice);
           }
-          if (this.dirty.size === 0) this.dirtyKeys.clear();
-          if (this.snapshot.remote) this.snapshot = { ...this.snapshot, remote: false };
+          this.forgetSaved(job, outcome.unstored, this.clash);
           this.invalid = [...job.invalid, ...outcome.skipped];
-          this.emit();
         }
+        // The screen follows `base`: a change another device made during the save shows now,
+        // before the medic edits over a value they have not seen. Unsaved edits stay on top.
+        this.snapshot = this.rebase(outcome.stored);
+        this.emit();
       }
       this.failed = false;
       return true;
@@ -618,6 +725,28 @@ export class BoardStore {
       this.failed = true;
       reportSaveFailed("board", error);
       return false;
+    }
+  }
+
+  /**
+   * After a save with no newer edit: the fields and rows it stored are no longer unsaved, so a
+   * later save never re-sends them over another device's edit (P1-003). Held fields (invalid,
+   * a partial last 4) and rows that could not be stored stay.
+   */
+  private forgetSaved(job: SaveJob, unstored: Record<(typeof ROW_KINDS)[number], ReadonlySet<string>>, withheld: Clash | null): void {
+    for (const key of Object.keys(job.patch)) {
+      if (key === "rowDrafts") for (const id of job.drafts) this.dirtyKeys.delete(DRAFT_KEY + id);
+      else if (!(withheld?.fields.has(key) && isHeldField(key))) this.dirtyKeys.delete(key);
+    }
+    for (const key of [...this.dirtyKeys]) {
+      if (!this.dirty.has(sliceOfField(key))) this.dirtyKeys.delete(key);
+    }
+    for (const kind of ROW_KINDS) {
+      if (!job.slices.has(ROW_SLICE[kind])) continue;
+      const edits = this.pendingRows[kind];
+      const kept = (key: string) => unstored[kind].has(key) || Boolean(withheld?.rows[kind].has(key));
+      for (const key of job.rows[kind].removed) if (!kept(key)) edits.removed.delete(key);
+      for (const key of job.rows[kind].changed.keys()) if (!kept(key)) edits.changed.delete(key);
     }
   }
 
@@ -641,6 +770,7 @@ export class BoardStore {
     }
     if (this.snapshot.cardId == null) {
       this.acked = card.clientUpdatedAt;
+      this.base = snapshotFromCard(card);
       this.snapshot = {
         ...this.snapshot,
         cardId: card.id,
@@ -702,8 +832,9 @@ function upsertById<T extends { id: string }>(rows: readonly T[], row: T): T[] {
   return rows.some((item) => item.id === row.id) ? rows.map((item) => (item.id === row.id ? row : item)) : [...rows, row];
 }
 
-function sliceOfField(field: CardField): BoardSlice {
-  if (field === "rowDrafts") return "drafts";
+/** The section of a card field, or of a `rowDrafts:<row id>` key. */
+function sliceOfField(field: string): BoardSlice {
+  if (field === "rowDrafts" || field.startsWith(DRAFT_KEY)) return "drafts";
   if (field in EMPTY_SNAPSHOT.identity) return "identity";
   if (field in EMPTY_SNAPSHOT.mechanism) return "mechanism";
   if (field in EMPTY_SNAPSHOT.treatments) return "treatments";
