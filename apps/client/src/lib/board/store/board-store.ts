@@ -11,7 +11,7 @@ import {
   type CardPatch,
   type MechanismOfInjury,
 } from "@tccc/shared";
-import { db, getResponderProfile, type CasualtyRepo, type LocalCasualtyCard } from "@/lib/db";
+import { db, getHeldBoardEdits, getResponderProfile, setHeldBoardEdits, type CasualtyRepo, type LocalCasualtyCard } from "@/lib/db";
 import { cleanCardPatch, type CleanPatch } from "@/lib/forms/card-patch";
 import { reportSaveFailed } from "@/lib/forms/save-status";
 import { isUnfinishedTime } from "@/lib/forms/time";
@@ -19,6 +19,7 @@ import { responderPatch } from "@/lib/forms/values";
 import { networkNowIso } from "@/lib/network-clock";
 import { layoutPaper, pinPaperRow, reconcileTreatments, regionAt, unpinPaperRow } from "@tccc/dd1380";
 import { commitBoard } from "../commit";
+import { heldEditsOf, restoreHeldEdits, stillUnsaved } from "../held";
 import {
   copyPendingRows,
   DRAFT_KEY,
@@ -46,7 +47,7 @@ import {
   type TreatmentListKey,
 } from "../snapshot";
 import { clamp, hasDraftContent, keepTyped, limbForRegion, sameJson, sliceOfField, upsertById } from "./helpers";
-import { publishInvalidFields } from "./live";
+import { publishInvalidFields, publishSaveStatus } from "./live";
 
 export type { BoardSlice, BoardSnapshot };
 
@@ -106,6 +107,25 @@ export class BoardStore {
   private base: BoardSnapshot;
   /** Unsaved edits another device changed too, until the medic keeps theirs or loads the update. */
   private clash: Clash | null = null;
+  /**
+   * Held edits are kept locally once the ones kept before (a reload ago) are back, so an empty
+   * board never clears them first (P2-031). A new casualty's draft has none to bring back.
+   */
+  private heldLoaded: boolean;
+  private heldRestore: Promise<void> | null = null;
+  /** The held edits as last kept, as JSON, so only a change is written. */
+  private heldJson = "null";
+  /** Held-edit writes, in order. Never rejects: a failure is reported and retried on the next change. */
+  private heldWrites: Promise<void> = Promise.resolve();
+  /**
+   * What this store saved before the held edits were back, newer than any kept value: field keys,
+   * `kind:rowKey:column` for saved row columns and `kind:rowKey` for removed rows.
+   */
+  private readonly savedBeforeHeld = { fields: new Set<string>(), rows: new Set<string>() };
+  /** Edits the medic chose to keep: still kept locally until the save that stores them succeeds. */
+  private keeping: Clash | null = null;
+  /** Restoring or keeping held edits locally failed. The save banner shows it until a retry works. */
+  heldFailed = false;
   private readonly jobs: SaveJob[] = [];
   private epoch = 0;
   private saving = false;
@@ -138,6 +158,7 @@ export class BoardStore {
     this.snapshot = card ? snapshotFromCard(card) : emptySnapshot(null);
     this.base = this.snapshot;
     this.acked = card?.clientUpdatedAt ?? "";
+    this.heldLoaded = card == null;
   }
 
   get cardId(): string | null {
@@ -162,13 +183,99 @@ export class BoardStore {
    */
   isSettled(): boolean {
     return (
-      this.timer === undefined && this.jobs.length === 0 && !this.drainPromise && !this.creating && !this.failed && this.heldNames().length === 0
+      this.timer === undefined &&
+      this.jobs.length === 0 &&
+      !this.drainPromise &&
+      !this.creating &&
+      !this.failed &&
+      !this.heldFailed &&
+      this.heldNames().length === 0
     );
   }
 
   private emit(): void {
     for (const listener of this.listeners) listener();
     publishInvalidFields();
+    this.keepHeld();
+  }
+
+  /** Keeps the held edits locally whenever they change, and clears them once none are held (P2-031). */
+  private keepHeld(): void {
+    const id = this.snapshot.cardId;
+    if (!this.heldLoaded || !id) return;
+    this.keeping = stillUnsaved(this.keeping, this.dirtyKeys, this.pendingRows);
+    const held = heldEditsOf(mergeClash(this.clash, this.keeping), this.snapshot, this.pendingRows);
+    const json = JSON.stringify(held);
+    if (json === this.heldJson) return;
+    this.heldJson = json;
+    this.heldWrites = this.heldWrites
+      .then(() => setHeldBoardEdits(db, id, held))
+      .then(() => {
+        if (!this.heldFailed) return;
+        this.heldFailed = false;
+        publishSaveStatus();
+        // The registry checked this store while the write was failing; let it check again.
+        this.deps.onSettled(this);
+      })
+      .catch((error: unknown) => {
+        this.heldJson = "";
+        this.heldFailed = true;
+        reportSaveFailed("board", error);
+      });
+  }
+
+  /**
+   * Brings back the edits held when this card was last open (P2-031), held again against the card
+   * as now stored. Called once per store; later calls return the same promise, which never rejects.
+   */
+  restoreHeld = (): Promise<void> => {
+    this.heldRestore ??= this.loadHeld().then(
+      () => {
+        const retried = this.heldFailed;
+        this.heldLoaded = true;
+        this.heldFailed = false;
+        this.emit();
+        publishSaveStatus();
+        // After a failed first try the registry already checked this store; let it check again.
+        if (retried) this.deps.onSettled(this);
+      },
+      // Not loaded: nothing is kept for this store, so the stored entry is not overwritten.
+      // The failure stays in the save banner, and the next flush (or Retry) tries again.
+      (error: unknown) => {
+        this.heldRestore = null;
+        this.heldFailed = true;
+        reportSaveFailed("board", error);
+      },
+    );
+    return this.heldRestore;
+  };
+
+  /** Restoring the held edits has finished, so this store may write them and be dropped when settled. */
+  get heldReady(): boolean {
+    return this.heldLoaded;
+  }
+
+  private async loadHeld(): Promise<void> {
+    const id = this.snapshot.cardId;
+    if (!id || this.heldLoaded) return;
+    const held = await getHeldBoardEdits(db, id);
+    this.heldJson = JSON.stringify(held ?? null);
+    if (!held) return;
+    const restored = restoreHeldEdits(held, this.snapshot, this.base, this.dirtyKeys, this.pendingRows, this.savedBeforeHeld);
+    if (!restored.clash) return;
+    this.epoch += 1;
+    for (const key of restored.fields) {
+      this.dirtyKeys.add(key);
+      this.dirty.add(sliceOfField(key));
+    }
+    for (const kind of ROW_KINDS) {
+      const { changed, removed } = restored.rows[kind];
+      for (const [key, columns] of changed) this.pendingRows[kind].changed.set(key, columns);
+      for (const key of removed) this.pendingRows[kind].removed.add(key);
+      if (changed.size > 0 || removed.size > 0) this.dirty.add(ROW_SLICE[kind]);
+    }
+    this.noteClash(restored.clash);
+    this.snapshot = { ...restored.snapshot, remote: true };
   }
 
   /**
@@ -325,6 +432,7 @@ export class BoardStore {
 
   /** "Keep my edits": the medic's values stay, and held ones are now saved over the other version. */
   keepEdits = (): void => {
+    this.keeping = mergeClash(this.keeping, this.clash);
     this.clash = null;
     this.snapshot = { ...this.snapshot, remote: false };
     // A new epoch, so the next save is a new job that includes the edits held until now.
@@ -588,10 +696,14 @@ export class BoardStore {
 
   // ── Saving ───────────────────────────────────────────────────────────────
 
+  /** Saves pending edits; also waits for held edits to be kept locally, so a page hide loses neither. */
   flush = (): Promise<boolean> => {
     this.clearTimer();
+    // Retries a failed restore (never rejects) or a failed write of the held edits.
+    if (this.heldFailed && !this.heldLoaded) void this.restoreHeld();
+    else if (this.heldFailed) this.keepHeld();
     this.enqueueCurrent(false);
-    return this.drain();
+    return this.drain().then((ok) => this.heldWrites.then(() => ok));
   };
 
   /** Writes the board to Dexie, creating the card when the draft has data. True when nothing is left unsaved. */
@@ -599,6 +711,7 @@ export class BoardStore {
     this.clearTimer();
     this.enqueueCurrent(true);
     await this.drain();
+    await this.heldWrites;
     return this.dirty.size === 0;
   };
 
@@ -703,6 +816,15 @@ export class BoardStore {
         this.noteClash(findClash(this.dirtyKeys, this.pendingRows, this.base, outcome.before, this.snapshot));
         this.base = outcome.stored;
         if (compareHlc(outcome.clientUpdatedAt, this.acked) > 0) this.acked = outcome.clientUpdatedAt;
+        if (!this.heldLoaded) {
+          for (const key of Object.keys(job.patch)) this.savedBeforeHeld.fields.add(key);
+          for (const kind of ROW_KINDS) {
+            for (const [key, columns] of job.rows[kind].changed) {
+              for (const column of columns) this.savedBeforeHeld.rows.add(`${kind}:${key}:${column}`);
+            }
+            for (const key of job.rows[kind].removed) this.savedBeforeHeld.rows.add(`${kind}:${key}`);
+          }
+        }
         if (this.epoch === job.epoch) {
           // A section with a value that could not be stored, or a clashing edit held for the
           // medic's choice, stays dirty: the input stays on screen and is saved later.

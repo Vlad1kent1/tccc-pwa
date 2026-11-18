@@ -86,7 +86,7 @@ function columnsOf(row: AnyBoardRow): string[] {
 }
 
 /** Same clinical content, column by column (key order does not matter). */
-function sameRow(a: AnyBoardRow | undefined, b: AnyBoardRow | undefined, columns?: Iterable<string>): boolean {
+export function sameRow(a: AnyBoardRow | undefined, b: AnyBoardRow | undefined, columns?: Iterable<string>): boolean {
   if (!a || !b) return a === b;
   const keys = columns ? [...columns] : [...new Set([...columnsOf(a), ...columnsOf(b)])];
   return keys.every((column) => sameJson((a as Row)[column], (b as Row)[column]));
@@ -163,7 +163,8 @@ export function fieldValue(snapshot: BoardSnapshot, key: string): unknown {
   return sources[key];
 }
 
-function sameField(mine: unknown, theirs: unknown): boolean {
+/** The shown value saves as `theirs` (equal, or equal once trimmed like a save). */
+export function sameField(mine: unknown, theirs: unknown): boolean {
   return sameJson(mine, theirs) || sameJson(normalizeText(mine), theirs);
 }
 

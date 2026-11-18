@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { restoreHeldBoards } from "@/lib/board";
 import { setPersistenceDenied } from "@/lib/persistence-denied";
 import { casualtyRepo, db, ensurePersistentStorage, finishLegacyExtrasMigration, loadServerClockOffset } from "@/lib/db";
 import { startSyncTriggers } from "@/lib/sync";
@@ -26,6 +27,9 @@ export function StorageBootstrap() {
         // The flag stays unset, so the next launch tries again.
         console.error("Queueing unsynced rows failed", error);
       });
+    // Board edits held for a choice before the last reload: listed again in the save banner (P2-031).
+    // Never rejects: failures are reported in the save banner.
+    void restoreHeldBoards();
     startSyncTriggers(db);
   }, []);
 

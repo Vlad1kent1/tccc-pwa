@@ -58,7 +58,19 @@ export interface ResponderProfile {
   last4: string;
 }
 
+/**
+ * Board edits held for the medic's choice after another device changed the same value
+ * (shared conflict policy), as the medic left them. Local only: never queued to the outbox
+ * (P2-031). `rows` is by board row kind, then row key; `row` null means the medic removed it.
+ */
+export interface HeldBoardEdits {
+  fields: Record<string, unknown>;
+  rows: Record<string, Record<string, { row: Record<string, unknown> | null; columns: string[] }>>;
+}
+
 export interface MetaValues {
+  /** Held board edits by card id (P2-031). */
+  heldBoardEdits: Record<string, HeldBoardEdits>;
   deviceId: string;
   /** Pull cursor (`changeSeq` as a decimal string). */
   lastPullSeq: string;

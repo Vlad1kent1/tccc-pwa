@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useT } from "@/i18n/use-t";
-import { db, getDeviceId, getResponderProfile, setResponderProfile } from "@/lib/db";
+import { clearBlockedBy, clearLocalCards, db, getDeviceId, getResponderProfile, setResponderProfile } from "@/lib/db";
 import { fieldClass } from "@/components/ui/field";
 
 export function AccountPanel() {
@@ -12,6 +12,8 @@ export function AccountPanel() {
   const [error, setError] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState("");
   const [pending, setPending] = useState(0);
+  const [held, setHeld] = useState(false);
+  const [clearFailed, setClearFailed] = useState(false);
 
   useEffect(() => {
     void getResponderProfile(db).then((profile) => {
@@ -20,6 +22,9 @@ export function AccountPanel() {
       setLast4(profile.last4);
     });
     void getDeviceId(db).then(setDeviceId);
+    clearBlockedBy(db)
+      .then((block) => setHeld(block === "held"))
+      .catch((error: unknown) => console.error("Could not read held board edits", error));
     const count = () => {
       void db.outbox.count().then(setPending);
     };
@@ -92,16 +97,22 @@ export function AccountPanel() {
           {t("settings.export")}
         </button>
         {pending > 0 ? <p className="text-sm text-muted">{t("settings.clearBlocked")}</p> : null}
+        {held ? <p className="text-sm text-muted">{t("settings.clearHeld")}</p> : null}
+        {clearFailed ? <p className="error-text">{t("settings.clearFailed")}</p> : null}
         <button
           type="button"
           className="btn btn-danger"
-          disabled={pending > 0}
+          disabled={pending > 0 || held}
           onClick={() => {
             if (!window.confirm(t("settings.clearConfirm"))) return;
-            void db.transaction("rw", db.casualties, db.conflicts, async () => {
-              await db.casualties.clear();
-              await db.conflicts.clear();
-            });
+            setClearFailed(false);
+            // Held clinical edits are never queued, so the outbox count alone does not cover them (P2-031).
+            clearLocalCards(db)
+              .then((block) => setHeld(block === "held"))
+              .catch((error: unknown) => {
+                console.error("Clearing local cards failed", error);
+                setClearFailed(true);
+              });
           }}
         >
           {t("settings.clear")}

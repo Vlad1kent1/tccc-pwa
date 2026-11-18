@@ -19,6 +19,7 @@ export {
   boardForCard,
   createDraftBoard,
   peekBoard,
+  restoreHeldBoards,
   useBoard,
   useFlushBoardOnHide,
   useRetainBoard,

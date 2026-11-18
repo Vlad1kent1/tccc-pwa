@@ -7,7 +7,7 @@ export const live = new Set<BoardStore>();
 /** The save banner shows every live store: a failure on any card stays visible until it is saved. */
 export function publishSaveStatus(): void {
   publishInvalidFields();
-  if (![...live].some((store) => store.failed)) reportSaved("board");
+  if (![...live].some((store) => store.failed || store.heldFailed)) reportSaved("board");
 }
 
 /** The banner's invalid list, re-derived on every store change. `reportInvalidFields` ignores an unchanged list. */

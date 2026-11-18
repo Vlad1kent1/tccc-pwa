@@ -96,7 +96,9 @@ export const en = {
     export: "Export cards (JSON)",
     clear: "Clear local cards",
     clearBlocked: "Sync or discard pending changes before clearing local cards.",
+    clearHeld: "A card has edits waiting for your choice. Open it and choose Keep my edits or Load updated card before clearing local cards.",
     clearConfirm: "Delete all casualty cards stored on this device?",
+    clearFailed: "Clearing local cards failed. Nothing was deleted; try again.",
   },
   list: {
     heading: "Casualties",

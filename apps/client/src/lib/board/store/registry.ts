@@ -1,7 +1,7 @@
 "use client";
 
-import { casualtyRepo, type LocalCasualtyCard } from "@/lib/db";
-import { setSaveRetry } from "@/lib/forms/save-status";
+import { casualtyRepo, db, listHeldBoardEdits, setHeldBoardEdits, type LocalCasualtyCard } from "@/lib/db";
+import { reportSaveFailed, setSaveRetry } from "@/lib/forms/save-status";
 import { BoardStore, type BoardDeps } from "./board-store";
 import { live, publishInvalidFields, publishSaveStatus } from "./live";
 
@@ -27,6 +27,14 @@ setSaveRetry("board", () => {
   void flushAllBoards();
 });
 
+/** Drops an unmounted store after the grace period, once its held edits are back (P2-031). */
+function collectLater(store: BoardStore): void {
+  setTimeout(() => {
+    if (store.heldReady || store.heldFailed) collect(store);
+    else collectLater(store);
+  }, UNMOUNTED_GRACE_MS);
+}
+
 function collect(store: BoardStore): void {
   if (store.refs > 0 || !store.isSettled()) return;
   live.delete(store);
@@ -46,8 +54,36 @@ export function boardForCard(card: LocalCasualtyCard): BoardStore {
   const store = new BoardStore(appDeps, card);
   byCard.set(card.id, store);
   live.add(store);
-  setTimeout(() => collect(store), UNMOUNTED_GRACE_MS);
+  // Never rejects: a failure is reported in the save banner.
+  void store.restoreHeld();
+  collectLater(store);
   return store;
+}
+
+/**
+ * At start-up: brings back every card's held edits (P2-031), so the save banner lists them and
+ * their stores stay until the medic chooses, without the cards being opened first. A failure is
+ * reported in the save banner and does not stop the other cards.
+ */
+export async function restoreHeldBoards(): Promise<void> {
+  let ids: string[];
+  try {
+    ids = Object.keys(await listHeldBoardEdits(db));
+  } catch (error) {
+    reportSaveFailed("board", error);
+    return;
+  }
+  for (const id of ids) {
+    try {
+      const card = await casualtyRepo.getById(id);
+      // Gone from this device: nothing is left to choose for. A card deleted elsewhere keeps its
+      // entry (it no longer blocks clearing local cards, which then discards it).
+      if (!card) await setHeldBoardEdits(db, id, null);
+      else if (!card.deletedAt) await boardForCard(card).restoreHeld();
+    } catch (error) {
+      reportSaveFailed("board", error);
+    }
+  }
 }
 
 export function peekBoard(cardId: string): BoardStore | undefined {

@@ -16,5 +16,6 @@ export {
   liveBoards,
   peekBoard,
   releaseBoard,
+  restoreHeldBoards,
   retainBoard,
 } from "./registry";

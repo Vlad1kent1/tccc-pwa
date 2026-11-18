@@ -1,7 +1,7 @@
 import { compareHlc, formatHlc, initialHlc, newId, receiveHlc, tickHlc } from "@tccc/shared";
 import { setServerClockOffset } from "../network-clock";
 import type { TcccDB } from "./schema";
-import type { MetaEntry, MetaKey, MetaValues } from "./types";
+import type { HeldBoardEdits, MetaEntry, MetaKey, MetaValues } from "./types";
 
 export async function getMeta<K extends MetaKey>(db: TcccDB, key: K): Promise<MetaValues[K] | undefined> {
   const entry = await db.meta.get(key);
@@ -65,6 +65,26 @@ export async function getResponderProfile(db: TcccDB): Promise<MetaValues["respo
 
 export async function setResponderProfile(db: TcccDB, profile: MetaValues["responderProfile"]): Promise<void> {
   await setMeta(db, "responderProfile", profile);
+}
+
+/** Every card's held board edits (P2-031), by card id. */
+export async function listHeldBoardEdits(db: TcccDB): Promise<Record<string, HeldBoardEdits>> {
+  return (await getMeta(db, "heldBoardEdits")) ?? {};
+}
+
+export async function getHeldBoardEdits(db: TcccDB, cardId: string): Promise<HeldBoardEdits | undefined> {
+  return (await listHeldBoardEdits(db))[cardId];
+}
+
+/** Stores a card's held board edits, or clears them with null. Local only: nothing is queued to sync. */
+export async function setHeldBoardEdits(db: TcccDB, cardId: string, held: HeldBoardEdits | null): Promise<void> {
+  await db.transaction("rw", db.meta, async () => {
+    const all = await listHeldBoardEdits(db);
+    if (held) all[cardId] = held;
+    else if (cardId in all) delete all[cardId];
+    else return;
+    await setMeta(db, "heldBoardEdits", all);
+  });
 }
 
 /**
